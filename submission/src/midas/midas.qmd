@@ -21,18 +21,18 @@ library(forecast)
 
 ```{r}
 # to render
-# data_raw <- read.csv("../../data/data_quarterly.csv")
-# metadata <- read.csv("../../data/metadata_quarterly.csv")
+data_raw <- read.csv("../../data/data_quarterly.csv")
+metadata <- read.csv("../../data/metadata_quarterly.csv")
 # to run 
-data_raw <- read.csv("submission/data/data_quarterly.csv")
-metadata <- read.csv("submission/data/metadata_quarterly.csv")
+# data_raw <- read.csv("submission/data/data_quarterly.csv")
+# metadata <- read.csv("submission/data/metadata_quarterly.csv")
 
 metadata <- metadata[, c(1,8)]
 
 # transform to ts object
-data <- data_raw |> dplyr::select(c("date", "gdp"))
+data <- data_raw |> dplyr::select(c("date", "rvgdp"))
 # all y data
-y_ext <- ts(data$gdp, start = c(1992, 1), end =  c(2027, 4), frequency=4) 
+y_ext <- ts(data$rvgdp, start = c(1992, 1), end =  c(2027, 4), frequency=4) 
 # y - without forecasts
 # because we diff later, go one step forward to make up for loss of 1 val for x
 y <- window(y_ext, start = c(1992, 1), end =  c(2025, 3)) # quarterly
@@ -169,8 +169,8 @@ summary(m_ar1)
 
 ```{r}
 # try out midas_nlpr 
-mu_it <- midas_nlpr(y_train ~ trend_train + mls(y_train,1,1) +fmls(x_train,2,3), start=list(x_train = rep(0, 3)))
-summary(mu_it)
+# mu_it <- midas_nlpr(y_train ~ trend_train + mls(y_train,1,1) + fmls(x_train,2,3), start=list(x_train = rep(0, 3)))
+# forecast::summary(mu_it)
 ```
 
 #### beispiel, show fmls()
@@ -225,16 +225,16 @@ length(m_ar1_forecast)
 ### unrestricted midas forecast
 
 ```{r}
-mu_it_forecast <- midasr::forecast(
-  mu_it, 
-  # need to name them the same as above, if not, doesn't work
-  newdata=list(x_train=x_val, trend_train=trend_val), 
-  h=4, 
-  method='dynamic' # dynamic, aka uses y_hat t for forecasting y hat t+1 -> because only 1 lag used for y (see model spec above)
-  )
+# mu_it_forecast <- midasr::forecast(
+#   mu_it, 
+#   # need to name them the same as above, if not, doesn't work
+#   newdata=list(x_train=x_val, trend_train=trend_val), 
+#   h=4, 
+#   method='dynamic' # dynamic, aka uses y_hat t for forecasting y hat t+1 -> because only 1 lag used for y (see model spec above)
+#   )
 
-summary(mu_it_forecast)
-mu_it_forecast <- mu_it_forecast$mean
+# summary(mu_it_forecast)
+# mu_it_forecast <- mu_it_forecast$mean
 ```
 
 ### benchmark forecasts
@@ -259,8 +259,9 @@ df_plot <- data.frame(
   m_ar1_t_forecast = c(rep(NA, 20), as.numeric(m_ar1_t_forecast)),
   m_ar1_forecast = c(rep(NA, 20), as.numeric(m_ar1_forecast)),
   ar_forecast = c(rep(NA, 20), as.numeric(ar_forecast)),
-  rw_forecast =c(rep(NA, 20), as.numeric(rw_forecast)),
-  mu_it_forecast =c(rep(NA, 20), as.numeric(mu_it_forecast))
+  rw_forecast =c(rep(NA, 20), as.numeric(rw_forecast))
+  # ,
+  # mu_it_forecast =c(rep(NA, 20), as.numeric(mu_it_forecast))
 )
 
 # df_plot
@@ -276,7 +277,7 @@ ggplot(df_plot, aes(x = time)) +
   geom_line(aes(y = m_ar1_t_forecast, color = "Trend MIDAS"), size = 1) +
   geom_line(aes(y = ar_forecast, color = "AR(1)"), size = 1) +
   geom_line(aes(y = rw_forecast, color = "Random Walk"), size = 1) +
-  geom_line(aes(y = mu_it_forecast, color = "MU trend"), size = 1) +
+  # geom_line(aes(y = mu_it_forecast, color = "MU trend"), size = 1) +
   labs(
     title = "MIDAS Forecast Comparison",
     y = "Y",
@@ -300,26 +301,31 @@ eval_df <- tail(df_plot, h) |>
     se_trend = (actual_post - m_ar1_t_forecast)^2,
     se_simple = (actual_post - m_ar1_forecast)^2,
     se_ar = (actual_post - ar_forecast)^2,
-    se_rw = (actual_post - rw_forecast)^2,
-    se_mu_it =  (actual_post - mu_it_forecast)^2
+    se_rw = (actual_post - rw_forecast)^2
+    # ,
+    # se_mu_it =  (actual_post - mu_it_forecast)^2
   )
 
 # Calculate MSE for each model
 mse_results <- data.frame(
-  Model = c("MIDAS with trend", "MIDAS without trend", "AR(1)", "Random Walk", "MU with trend"),
+  Model = c("MIDAS with trend", "MIDAS without trend", "AR(1)", "Random Walk"
+  # , "MU with trend"
+  ),
   MSE = c(
     mean(eval_df$se_trend, na.rm = TRUE),
     mean(eval_df$se_simple, na.rm = TRUE),
     mean(eval_df$se_ar, na.rm = TRUE),
-    mean(eval_df$se_rw, na.rm = TRUE),
-    mean(eval_df$se_mu_it, na.rm = TRUE)
+    mean(eval_df$se_rw, na.rm = TRUE)
+    #,
+    # mean(eval_df$se_mu_it, na.rm = TRUE)
   ),
   RMSE = c(
     sqrt(mean(eval_df$se_trend, na.rm = TRUE)),
     sqrt(mean(eval_df$se_simple, na.rm = TRUE)),
     sqrt(mean(eval_df$se_ar, na.rm = TRUE)),
-    sqrt(mean(eval_df$se_rw, na.rm = TRUE)),
-    sqrt(mean(eval_df$se_mu_it, na.rm = TRUE))
+    sqrt(mean(eval_df$se_rw, na.rm = TRUE))
+    #,
+    # sqrt(mean(eval_df$se_mu_it, na.rm = TRUE))
   )
 )
 
