@@ -131,8 +131,15 @@ ar1 <- stats::arima(y_train, order = c(2, 0, 0))
 summary(ar1)
 
 # Random walk w/ drift -> auto.arima generates if no AR or MA component needed 
-rw_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
-summary(rw_drift)
+# rw_no_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
+# summary(rw_no_drift)
+```
+
+### simulate random walk 
+
+```{r}
+rw_no_drift <- forecast::rwf(y_train, h = length(y_val), drift = TRUE)
+summary(rw_no_drift)
 ```
 
 <!-- TODO: use forecast package cross validation -->
@@ -268,7 +275,8 @@ h <- length(m_ar1_t_forecast)
 
 ar_forecast <- forecast(ar1, h=h)$mean
 print(ar_forecast)
-rw_forecast <- forecast(rw_drift, h=h)$mean
+rw_forecast <- rw_no_drift$mean[seq_len(length(y_val))]
+# rw_forecast <- forecast(rw_no_drift, h=h)$mean
 ```
 
 ### create Plot DF
@@ -332,7 +340,7 @@ eval_df <- tail(df_plot, h) |>
 
 # Calculate MSE for each model
 mse_results <- data.frame(
-  Model = c("MIDAS with trend", "MIDAS without trend", "AR(1)", "Random Walk"
+  Model = c("MIDAS with trend", "MIDAS without trend", "AR(2)", "Random Walk"
   # , "MU with trend"
   ),
   MSE = c(
@@ -363,8 +371,8 @@ write.csv(mse_results, file = "../../output/mse_results.csv")
 
 ```{r}
 # Random walk w/ drift -> auto.arima generates if no AR or MA component needed 
-# rw_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
-# summary(rw_drift)
+# rw_no_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
+# summary(rw_no_drift)
 ```
 
 So for now, the `auto.arima` fitted model, which is a random walk, see output  with trend performs better than the model without trend.
