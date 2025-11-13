@@ -243,10 +243,8 @@ trend_val <- (length(y_train)+1) : (length(y_train)+length(y_val))
 ar1 <- stats::arima(y_train, order = c(2, 0, 0))
 summary(ar1)
 
-# TODO: construct actual random walk
-# Random walk w/ drift -> auto.arima generates if no AR or MA component needed 
-rw_drift <- forecast::auto.arima(y_train) # ARIMA (0,0,0) # w/ non zero mean
-summary(rw_drift)
+rw <- forecast::rwf(y_train, h = length(y_val), drift = TRUE)
+summary(rw)
 ```
 
 <!-- TODO: use forecast package cross validation -->
@@ -381,8 +379,8 @@ length(m_ar1_forecast)
 h <- length(m_ar1_t_forecast)
 
 ar_forecast <- forecast(ar1, h=h)$mean
-print(ar_forecast)
-rw_forecast <- forecast(rw_drift, h=h)$mean
+rw_forecast <- rw$mean[seq_len(length(y_val))]
+# TODO: length 14 but rest is length 13
 ```
 
 ### create Plot DF
