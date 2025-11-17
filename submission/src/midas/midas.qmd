@@ -21,11 +21,11 @@ library(forecast)
 
 ```{r}
 # to render
-data_raw <- read.csv("../../data/data_quarterly.csv")
-metadata <- read.csv("../../data/metadata_quarterly.csv")
+# data_raw <- read.csv("../../data/data_quarterly.csv")
+# metadata <- read.csv("../../data/metadata_quarterly.csv")
 # to run 
-# data_raw <- read.csv("submission/data/data_quarterly.csv")
-# metadata <- read.csv("submission/data/metadata_quarterly.csv")
+data_raw <- read.csv("submission/data/data_quarterly.csv")
+metadata <- read.csv("submission/data/metadata_quarterly.csv")
 
 metadata <- metadata[, c(1,8)]
 
@@ -275,7 +275,7 @@ h <- length(m_ar1_t_forecast)
 
 ar_forecast <- forecast(ar1, h=h)$mean
 print(ar_forecast)
-rw_forecast <- rw_no_drift$mean[seq_len(length(y_val))]
+ 
 # rw_forecast <- forecast(rw_no_drift, h=h)$mean
 ```
 

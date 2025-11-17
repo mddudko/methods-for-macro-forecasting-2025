@@ -21,8 +21,9 @@ library(forecast)
 
 ```{r}
 # to render
-# data_raw <- read.csv("../../data/data_quarterly.csv")
-# metadata <- read.csv("../../data/metadata_quarterly.csv")
+data_raw <- read.csv("../../data/data_quarterly.csv")
+metadata <- read.csv("../../data/metadata_quarterly.csv")
+# to run
 data_raw <- read.csv("submission/data/data_quarterly.csv")
 metadata <- read.csv("submission/data/metadata_quarterly.csv")
 
@@ -81,7 +82,7 @@ align_monthly_to_quarter <- function(y_ts, x_ts, shift_months, m = 3) {
 
 # try these different publication gaps (0, 1, or 2 months)
 month_shift <- c(0, 1, 2)
-selected_shift <- 2  # average GDP release lag from publication_times.md
+selected_shift <- 0  # average GDP release lag from publication_times.md
 m <- 3  # number of high-frequency observations per quarter
 ```
 
@@ -233,8 +234,27 @@ trend_train <- 1:length(y_train)
 trend_val <- (length(y_train)+1) : (length(y_train)+length(y_val))
 ```
 
+#### check data
+
+```{r}
+tail(y_train)
+tail(x_train)
+```
+
 ## Fit Models
 
+#### beispiel, show fmls()
+
+```{r}
+# print(fmls(x=x_train, k=2, m=3))
+head(y_train)
+# mls(y_train, k=2, m=1)
+# mls(y_train, k=1, m=1) 
+# mls(y_train, k=1:2, m=1) 
+# TODO: mls(y_train, k=1:2, m=1)
+# mls(y_train, k=2, m=1)
+
+```
 
 #### benchmark models
 
@@ -261,8 +281,6 @@ pacf(y)
 
 We can see, lag 2 significant 
 
-
-
 ```{r midas}
 # check length of fmls matrix 
 
@@ -275,7 +293,8 @@ length(f)
 m_ar1_t <- midas_r(
   y_train ~ 
   trend_train + # incl. trend 
-  mls(y_train, k=2, m=1) +  # only lag 2
+  mls(y_train, k=1:2, m=1) +
+  # mls(y_train, k=2, m=1) +  # only lag 2
   fmls(x_train, k=2, m=3), # max lag 1 year # add nealmon sometime
   start = list(x_train = rep(0, 3))
   )
@@ -289,7 +308,8 @@ summary(m_ar1_t)
 # without trend
 m_ar1 <- midas_r(
   y_train ~ 
-  mls(y_train, k=2, m=1) + # only lag 2
+  mls(y_train, k=1:2, m=1) +
+  # mls(y_train, k=2, m=1) + # only lag 2
   fmls(x=x_train, k=2, m=3), # max lag 1 year # add nealmon sometime
   start = list(x_train = rep(0, 3))
   )
@@ -306,15 +326,6 @@ summary(m_ar1)
 # forecast::summary(mu_it)
 ```
 
-#### beispiel, show fmls()
-
-```{r}
-# print(fmls(x=x_train, k=2, m=3))
-# mls(y_train, k=1, m=1) 
-# mls(y_train, k=2, m=1)
-
-
-```
 
 ## Forecast 
 
@@ -379,7 +390,9 @@ length(m_ar1_forecast)
 h <- length(m_ar1_t_forecast)
 
 ar_forecast <- forecast(ar1, h=h)$mean
-rw_forecast <- rw$mean[seq_len(length(y_val))]
+rw_forecast <- rw$mean[seq_len(h)]
+print(length(rw_forecast))
+print(length(ar_forecast))
 # TODO: length 14 but rest is length 13
 ```
 
