@@ -19,6 +19,9 @@ Rplots.pdf
 # output/*.rds
 # output/*.pdf
 
+# Exclude large model files (>100 MB GitHub limit)
+output/forecasts/mfvar/models/*.rds
+
 # Temporary files
 *.tmp
 *.bak

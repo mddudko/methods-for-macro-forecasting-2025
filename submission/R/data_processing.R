@@ -72,8 +72,7 @@ read_combined_timeseries <- function(data_dir, variables = NULL, deduplicate = c
 
   alias_map <- c(
     devkum = "devkum_eur",
-    amarbma = "amarbma_t0",
-    snboffzisa = "snboffzisa_eu"
+    amarbma = "amarbma_t0"
   )
   resolved_vars <- vapply(variables, function(var) {
     if (var %in% available_vars) {
