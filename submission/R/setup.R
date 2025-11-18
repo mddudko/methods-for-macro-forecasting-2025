@@ -130,7 +130,7 @@ estimate_mfvar_model <- function(Y, n_lags, n_fcst, seed = 123) {
   n_thin <- getOption("mfvar.n_thin", 1L)
   
   # Try tighter prior (lambda1) and different aggregation method to reduce oscillations
-  lambda1 <- getOption("mfvar.lambda1", 0.1)  # default 0.2, smaller = tighter shrinkage
+  lambda1 <- getOption("mfvar.lambda1", 0.06)  # Temporary: verifying 0.06 oscillation metrics
   aggregation <- getOption("mfvar.aggregation", "first")  # "average", "first", or "last"
   
   prior_obj <- mfbvar::set_prior(
