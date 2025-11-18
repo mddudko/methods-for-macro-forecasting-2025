@@ -2,13 +2,14 @@
 
 utils::globalVariables(c(
   ".data", "qtr", "rvgdp", "cpi", "wkfreuro", "gdp_growth", "inflation",
-  "exch_rate", "time_index"
+  "exch_rate", "time_index", "series", "value", "date"
 ))
 
 qtr <- rvgdp <- cpi <- wkfreuro <- gdp_growth <- inflation <- exch_rate <- time_index <- NULL
+series <- value <- date <- NULL
 
 read_quarterly_data <- function(data_dir) {
-  q_path <- file.path(data_dir, "data_quarterly.csv")
+  q_path <- file.path(data_dir, "processed", "data_quarterly.csv")
   stopifnot(file.exists(q_path))
   qraw <- readr::read_csv(q_path, show_col_types = FALSE)
 
@@ -53,28 +54,274 @@ fetch_kof_barometer <- function() {
   )
 }
 
-trim_to_overlap <- function(qdat, baro_ts) {
-  baro_end <- stats::end(baro_ts)
-  last_q_num <- floor(baro_end[2] / 3)
-  if (last_q_num == 0) {
-    last_q_year <- baro_end[1] - 1
-    last_q_num <- 4
-  } else {
-    last_q_year <- baro_end[1]
+read_combined_timeseries <- function(data_dir, variables = NULL, deduplicate = c("first", "mean")) {
+  combined_path <- file.path(data_dir, "combined_timeseries.csv")
+  if (!file.exists(combined_path)) {
+    stop("Combined monthly dataset not found at ", combined_path)
   }
-  q_cutoff <- zoo::as.yearqtr(sprintf("%d Q%d", last_q_year, last_q_num))
-  qdat <- qdat |>
-    dplyr::filter(.data$qtr <= q_cutoff)
-  if (!nrow(qdat)) {
-    stop("No overlapping quarters between the quarterly dataset and the KOF Barometer.")
+
+  deduplicate <- match.arg(deduplicate)
+  raw <- readr::read_csv(combined_path, show_col_types = FALSE, progress = interactive()) |>
+    dplyr::mutate(date = as.Date(.data$date)) |>
+    dplyr::select(-tidyselect::matches("^Unnamed"))
+
+  available_vars <- setdiff(names(raw), "date")
+  if (is.null(variables)) {
+    variables <- available_vars
   }
-  list(qdat = qdat, baro_ts = baro_ts)
+
+  alias_map <- c(
+    devkum = "devkum_eur",
+    amarbma = "amarbma_t0",
+    snboffzisa = "snboffzisa_eu"
+  )
+  resolved_vars <- vapply(variables, function(var) {
+    if (var %in% available_vars) {
+      return(var)
+    }
+    alias <- unname(alias_map[var])
+    if (!is.null(alias) && alias %in% available_vars) {
+      return(alias)
+    }
+    stop(
+      sprintf(
+        "Requested monthly column '%s' (or alias) missing in combined_timeseries.csv",
+        var
+      )
+    )
+  }, character(1))
+  names(resolved_vars) <- variables
+
+  tidy <- raw |>
+    dplyr::select(date, dplyr::all_of(unique(resolved_vars))) |>
+    tidyr::pivot_longer(-date, names_to = "series", values_to = "value")
+  tidy$series <- names(resolved_vars)[match(tidy$series, resolved_vars)]
+
+  deduped <- tidy |>
+    dplyr::group_by(.data$series, .data$date) |>
+    dplyr::summarise(
+      value = {
+        vals <- value[!is.na(value)]
+        if (!length(vals)) {
+          NA_real_
+        } else if (identical(deduplicate, "mean")) {
+          mean(vals)
+        } else {
+          vals[[1]]
+        }
+      },
+      .groups = "drop"
+    ) |>
+    tidyr::pivot_wider(names_from = "series", values_from = "value") |>
+    dplyr::arrange(.data$date)
+
+  start_date <- dplyr::first(deduped$date)
+  end_date <- dplyr::last(deduped$date)
+
+  start_year <- lubridate::year(start_date)
+  start_month <- lubridate::month(start_date)
+
+  ts_list <- lapply(setNames(variables, variables), function(var) {
+    stats::ts(deduped[[var]], start = c(start_year, start_month), frequency = 12)
+  })
+
+  list(
+    data = deduped,
+    ts_list = ts_list,
+    start_date = start_date,
+    end_date = end_date
+  )
+}
+
+trim_to_overlap <- function(
+    qdat,
+    monthly_input,
+    mode = c("restrict", "ragged"),
+    fill_method = c("locf", "none"),
+    start_strategy = c("fill", "omit")
+) {
+  mode <- match.arg(mode)
+  fill_method <- match.arg(fill_method)
+  start_strategy <- match.arg(start_strategy)
+  fill_series <- function(series) {
+    if (identical(fill_method, "none")) {
+      return(series)
+    }
+    vals <- as.numeric(series)
+    if (all(is.na(vals))) {
+      return(series)
+    }
+    vals <- zoo::na.locf(vals, na.rm = FALSE)
+    vals <- zoo::na.locf(vals, fromLast = TRUE, na.rm = FALSE)
+    stats::ts(vals, start = stats::start(series), frequency = stats::frequency(series))
+  }
+  first_non_na_month <- function(series) {
+    vals <- as.numeric(series)
+    idx <- which(!is.na(vals))[1]
+    if (is.na(idx)) {
+      return(NULL)
+    }
+    freq <- stats::frequency(series)
+    start_idx <- stats::start(series)
+    base_offset <- (start_idx[1] * freq) + (start_idx[2] - 1)
+    total_periods <- base_offset + (idx - 1)
+    year <- total_periods %/% freq
+    month <- (total_periods %% freq) + 1
+    c(year, month)
+  }
+
+  if (inherits(monthly_input, "ts")) {
+    series_start <- stats::start(monthly_input)
+    series_end <- stats::end(monthly_input)
+
+    if (identical(mode, "restrict")) {
+      start_q_num <- ceiling(series_start[2] / 3)
+      start_q_year <- series_start[1]
+      if (start_q_num == 0) {
+        start_q_year <- start_q_year - 1
+        start_q_num <- 4
+      }
+      q_start <- zoo::as.yearqtr(sprintf("%d Q%d", start_q_year, start_q_num))
+      qdat_trimmed <- qdat |>
+        dplyr::filter(.data$qtr >= q_start)
+      if (!nrow(qdat_trimmed)) {
+        stop("No overlapping quarters between the quarterly dataset and the monthly indicator.")
+      }
+      last_q_num <- floor(series_end[2] / 3)
+      if (last_q_num == 0) {
+        last_q_year <- series_end[1] - 1
+        last_q_num <- 4
+      } else {
+        last_q_year <- series_end[1]
+      }
+      q_cutoff <- zoo::as.yearqtr(sprintf("%d Q%d", last_q_year, last_q_num))
+      qdat_trimmed <- qdat_trimmed |>
+        dplyr::filter(.data$qtr <= q_cutoff)
+      if (!nrow(qdat_trimmed)) {
+        stop("No overlapping quarters between the quarterly dataset and the monthly indicator.")
+      }
+      baro_ts <- stats::window(monthly_input, end = c(series_end[1], series_end[2]))
+      return(list(qdat = qdat_trimmed, baro_ts = baro_ts))
+    }
+
+    # ragged mode keeps the full quarterly sample and pads monthly observations
+    qdat_trimmed <- qdat
+    target_end <- c(series_end[1], series_end[2])
+    baro_ts <- stats::window(
+      monthly_input,
+      start = c(series_start[1], series_start[2]),
+      end = target_end,
+      extend = TRUE
+    )
+      baro_ts <- fill_series(baro_ts)
+
+    return(list(qdat = qdat_trimmed, baro_ts = baro_ts))
+  }
+
+  if (!is.list(monthly_input) || !length(monthly_input)) {
+    stop("Monthly input must be either a 'ts' object or a named list of 'ts' objects.")
+  }
+
+  ends_matrix <- vapply(monthly_input, stats::end, numeric(2))
+
+  if (identical(mode, "restrict")) {
+    starts_matrix <- vapply(monthly_input, stats::start, numeric(2))
+    max_start_year <- max(starts_matrix[1, ])
+    max_start_month <- max(starts_matrix[2, ])
+    start_q_num <- ceiling(max_start_month / 3)
+    start_q_year <- max_start_year
+    if (start_q_num == 0) {
+      start_q_year <- start_q_year - 1
+      start_q_num <- 4
+    }
+    q_start <- zoo::as.yearqtr(sprintf("%d Q%d", start_q_year, start_q_num))
+    qdat_trimmed <- qdat |>
+      dplyr::filter(.data$qtr >= q_start)
+    if (!nrow(qdat_trimmed)) {
+      stop("No overlapping quarters between the quarterly dataset and the monthly indicators.")
+    }
+    min_year <- min(ends_matrix[1, ])
+    min_month <- min(ends_matrix[2, ])
+    last_q_num <- floor(min_month / 3)
+    if (last_q_num == 0) {
+      last_q_year <- min_year - 1
+      last_q_num <- 4
+    } else {
+      last_q_year <- min_year
+    }
+    q_cutoff <- zoo::as.yearqtr(sprintf("%d Q%d", last_q_year, last_q_num))
+    qdat_trimmed <- qdat_trimmed |>
+      dplyr::filter(.data$qtr <= q_cutoff)
+    if (!nrow(qdat_trimmed)) {
+      stop("No overlapping quarters between the quarterly dataset and the monthly indicators.")
+    }
+
+    trimmed_monthly <- lapply(monthly_input, function(x) {
+      series_end <- stats::end(x)
+      end_year <- min(series_end[1], min_year)
+      end_month <- if (series_end[1] == min_year) min(series_end[2], min_month) else min_month
+      stats::window(x, end = c(end_year, end_month))
+    })
+
+    return(list(qdat = qdat_trimmed, monthly = trimmed_monthly))
+  }
+
+  qdat_trimmed <- qdat
+  if (!nrow(qdat_trimmed)) {
+    stop("Quarterly dataset is empty; cannot align monthly indicators.")
+  }
+  q_start <- qdat_trimmed$qtr[1]
+  q_start_mon <- zoo::as.yearmon(q_start)
+  q_start_date <- zoo::as.Date(q_start_mon)
+  # Extend two months before the sample start so monthly aggregation has enough
+  # history (matches window_monthly_series default backfill window).
+  back_period <- lubridate::period(2L, units = "months")
+  q_start_back <- suppressMessages(lubridate::`%m-%`(q_start_date, back_period))
+  target_start <- c(lubridate::year(q_start_back), lubridate::month(q_start_back))
+  target_end_year <- max(ends_matrix[1, ])
+  target_end_month <- max(ends_matrix[2, ])
+  target_end <- c(target_end_year, target_end_month)
+
+  if (identical(start_strategy, "omit")) {
+    keep_idx <- vapply(monthly_input, function(series) {
+      series_start <- first_non_na_month(series)
+      if (is.null(series_start)) {
+        return(FALSE)
+      }
+      series_start[1] < target_start[1] || (series_start[1] == target_start[1] && series_start[2] <= target_start[2])
+    }, logical(1))
+    dropped <- names(monthly_input)[!keep_idx]
+    if (length(dropped)) {
+      message(sprintf(
+        "Dropping monthly indicators without coverage at sample start: %s",
+        paste(dropped, collapse = ", ")
+      ))
+    }
+    monthly_input <- monthly_input[keep_idx]
+    if (!length(monthly_input)) {
+      stop("No monthly indicators cover the start of the quarterly sample under the 'omit' strategy.")
+    }
+  }
+
+  extended_monthly <- lapply(monthly_input, function(x) {
+    stats::window(
+      x,
+      start = target_start,
+      end = target_end,
+      extend = TRUE
+    )
+  })
+
+  names(extended_monthly) <- names(monthly_input)
+  filled_monthly <- lapply(extended_monthly, fill_series)
+
+  list(qdat = qdat_trimmed, monthly = filled_monthly)
 }
 
 quarter_to_month_end <- function(yq) {
   # Convert a year-quarter stamp to the corresponding month-end indices.
   end_month <- zoo::as.yearmon(yq) + (2 / 12)
-  end_date <- as.Date(end_month)
+  end_date <- zoo::as.Date(end_month)
   c(lubridate::year(end_date), lubridate::month(end_date))
 }
 
@@ -84,20 +331,35 @@ build_q_ts <- function(q_subset) {
   lapply(q_z, stats::as.ts)
 }
 
-build_Y <- function(q_subset, baro_subset) {
-  # Arrange inputs into the mfbvar::set_prior structure.
+build_Y <- function(q_subset, monthly_inputs) {
+  # Arrange inputs into the mfbvar::set_prior structure. Monthly indicators can be
+  # supplied either as a single ts object or a named list of ts objects.
   q_ts_local <- build_q_ts(q_subset)
-  list(
-    kofbarometer = baro_subset,
-    quarterly = cbind(
-      gdp_growth = q_ts_local[["gdp_growth"]],
-      inflation  = q_ts_local[["inflation"]],
-      exch_rate  = q_ts_local[["exch_rate"]]
+  if (inherits(monthly_inputs, "ts")) {
+    monthly_list <- list(kofbarometer = stats::as.ts(monthly_inputs))
+  } else if (is.list(monthly_inputs)) {
+    if (is.null(names(monthly_inputs)) || any(!nzchar(names(monthly_inputs)))) {
+      names(monthly_inputs) <- paste0("indicator_", seq_along(monthly_inputs))
+    }
+    monthly_list <- lapply(monthly_inputs, stats::as.ts)
+  } else {
+    stop("monthly_inputs must be a 'ts' object or a list of 'ts' objects.")
+  }
+
+  c(
+    monthly_list,
+    list(
+      quarterly = cbind(
+        gdp_growth = q_ts_local[["gdp_growth"]],
+        inflation  = q_ts_local[["inflation"]],
+        exch_rate  = q_ts_local[["exch_rate"]]
+      )
     )
   )
 }
 
-window_baro <- function(baro_ts, qdat) {
+window_baro <- function(baro_ts, qdat, end_mode = c("quarter", "available")) {
+  end_mode <- match.arg(end_mode)
   q_start <- qdat$qtr[1]
   q_start_date <- zoo::as.Date(q_start, frac = 1)
   q_start_year <- lubridate::year(q_start_date)
@@ -111,9 +373,42 @@ window_baro <- function(baro_ts, qdat) {
   q_end_date <- zoo::as.Date(q_end, frac = 1)
   q_end_year <- lubridate::year(q_end_date)
   q_end_q <- lubridate::quarter(q_end_date)
-  m_end <- c(q_end_year, q_end_q * 3)
+  m_end_quarter <- c(q_end_year, q_end_q * 3)
+  target_end <- if (identical(end_mode, "available")) stats::end(baro_ts) else m_end_quarter
   # Extend two months before the sample start so the ragged-edge aggregation works.
-  stats::window(baro_ts, start = m_start_back2, end = m_end)
+  stats::window(baro_ts, start = m_start_back2, end = target_end)
+}
+
+window_monthly_series <- function(monthly_list, qdat, back_months = 2L, end_mode = c("quarter", "available")) {
+  end_mode <- match.arg(end_mode)
+  if (!length(monthly_list)) {
+    stop("'monthly_list' must contain at least one series.")
+  }
+  q_start <- qdat$qtr[1]
+  q_start_date <- zoo::as.Date(zoo::as.yearmon(q_start))
+  back_period <- lubridate::period(back_months, units = "months")
+  q_start_back <- suppressMessages(lubridate::`%m-%`(q_start_date, back_period))
+  start_indices <- c(lubridate::year(q_start_back), lubridate::month(q_start_back))
+
+  q_end <- qdat$qtr[nrow(qdat)]
+  end_indices <- quarter_to_month_end(q_end)
+
+  lapply(monthly_list, function(series) {
+    series_start <- stats::start(series)
+    adj_start <- start_indices
+    if (series_start[1] > adj_start[1] || (series_start[1] == adj_start[1] && series_start[2] > adj_start[2])) {
+      adj_start <- series_start
+    }
+
+    series_end <- stats::end(series)
+    adj_end <- if (identical(end_mode, "available")) series_end else end_indices
+    if (identical(end_mode, "quarter")) {
+      if (series_end[1] < adj_end[1] || (series_end[1] == adj_end[1] && series_end[2] < adj_end[2])) {
+        adj_end <- series_end
+      }
+    }
+    stats::window(series, start = adj_start, end = adj_end)
+  })
 }
 
 stationarise_quarterly <- function(qdat, vars = c("gdp_growth", "inflation", "exch_rate"), frequency = 4L) {

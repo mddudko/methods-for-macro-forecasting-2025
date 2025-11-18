@@ -7,7 +7,7 @@ utils::globalVariables(c(
 
 variable <- step_ahead <- mfvar <- actual <- ar2 <- fold_index <- rw_trend <- time_index <- NULL
 
-run_holdout_evaluation <- function(qdat_adj, qdat_orig, baro_ts, n_lags, target_vars, transforms, out_dir) {
+run_holdout_evaluation <- function(qdat_adj, qdat_orig, monthly_inputs, n_lags, target_vars, transforms, out_dir) {
   eval_table <- NULL
   evaluation_path <- NULL
   eval_horizon <- {
@@ -22,8 +22,12 @@ run_holdout_evaluation <- function(qdat_adj, qdat_orig, baro_ts, n_lags, target_
     q_eval_orig <- qdat_orig |> dplyr::slice_tail(n = eval_horizon)
 
     baro_train_end <- quarter_to_month_end(q_train_orig$qtr[nrow(q_train_orig)])
-    baro_train <- stats::window(baro_ts, end = baro_train_end)
-    Y_train <- build_Y(q_train_adj, baro_train)
+    monthly_train <- if (is.list(monthly_inputs)) {
+      window_monthly_series(monthly_inputs, q_train_orig, end_mode = "available")
+    } else {
+      stats::window(monthly_inputs, end = baro_train_end)
+    }
+    Y_train <- build_Y(q_train_adj, monthly_train)
 
     mod_eval <- estimate_mfvar_model(Y_train, n_lags, n_fcst = eval_horizon, seed = 123)
     fc_eval_raw <- predict(mod_eval, aggregate_fcst = TRUE, pred_bands = 0.8)
@@ -125,7 +129,9 @@ run_holdout_evaluation <- function(qdat_adj, qdat_orig, baro_ts, n_lags, target_
   )
 }
 
-run_cross_validation <- function(qdat_adj, qdat_orig, baro_ts, n_lags, target_vars, transforms, out_dir, max_folds = getOption("mfvar.cv_max_folds", Inf)) {
+run_cross_validation <- function(qdat_adj, qdat_orig, monthly_inputs, n_lags, target_vars, transforms, out_dir, max_folds = getOption("mfvar.cv_max_folds", Inf)) {
+  # Expanding window cross-validation: training window starts from beginning
+  # and expands to include more observations as we move forward in time
   cv_table <- NULL
   cv_path <- NULL
   folds_path <- NULL
@@ -149,13 +155,19 @@ run_cross_validation <- function(qdat_adj, qdat_orig, baro_ts, n_lags, target_va
         next
       }
 
+      # Expanding window: always train from row 1 to train_rows
+      # As idx increases, train_rows increases, expanding the training set
       q_train_adj <- qdat_adj |> dplyr::slice_head(n = train_rows)
       q_train_orig <- qdat_orig |> dplyr::slice_head(n = train_rows)
       q_test_orig <- qdat_orig |> dplyr::slice(idx)
 
       baro_train_end <- quarter_to_month_end(q_train_orig$qtr[nrow(q_train_orig)])
-      baro_train <- stats::window(baro_ts, end = baro_train_end)
-      Y_cv <- build_Y(q_train_adj, baro_train)
+      monthly_train <- if (is.list(monthly_inputs)) {
+        window_monthly_series(monthly_inputs, q_train_orig, end_mode = "available")
+      } else {
+        stats::window(monthly_inputs, end = baro_train_end)
+      }
+      Y_cv <- build_Y(q_train_adj, monthly_train)
 
       mod_cv <- try(estimate_mfvar_model(Y_cv, n_lags, n_fcst = 1, seed = 200 + idx), silent = TRUE)
       if (inherits(mod_cv, "try-error")) {
