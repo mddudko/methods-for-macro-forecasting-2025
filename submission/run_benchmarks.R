@@ -223,8 +223,8 @@ metrics_tbl <- tibble::tibble(
 holdout_metrics_detailed <- tibble::tibble()
 forecast_wide <- tibble::tibble()
 
-# Set to FALSE to run actual CV with 2 folds
-skip_cv_temp <- TRUE
+# Set to FALSE to run actual CV
+skip_cv_temp <- FALSE
 run_cv <- !skip_cv && !skip_cv_temp
 
 if (skip_cv_temp) {

@@ -75,7 +75,7 @@ extra_months,variable,monthly_coverage,model,horizon,rmse,mae,observations
 2,exch_rate,Cutoff +2m,AR(2),1-year ahead,0.02248978697443455,0.01731408502084096,10
 2,exch_rate,Cutoff +2m,MF-VAR,1-step ahead,0.00587547533458747,0.00473640465599112,10
 2,exch_rate,Cutoff +2m,MF-VAR,1-year ahead,0.03164125689297849,0.02581199779933416,10
-2,exch_rate,Cutoff +2m,MIDAS,1-step ahead,0.0257452659630828,0.022201896806857548,10
+2,exch_rate,Cutoff +2m,MIDAS,1-step ahead,0.0257452659630828,0.02220189680685754,10
 2,exch_rate,Cutoff +2m,MIDAS,1-year ahead,0.03478730157678571,0.02655474860693076,10
 2,exch_rate,Cutoff +2m,MIDAS (trend),1-step ahead,0.02472478662501752,0.02099107577067837,10
 2,exch_rate,Cutoff +2m,MIDAS (trend),1-year ahead,0.03242524343247919,0.02511943737356761,10
