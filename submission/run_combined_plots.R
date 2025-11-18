@@ -57,6 +57,9 @@ qdat_raw <- read_quarterly_data(DATA_DIR)
 monthly_variables <- resolve_monthly_indicators()
 monthly_data <- read_combined_timeseries(DATA_DIR, variables = monthly_variables)
 
+# Apply publication lags to reflect real-world data availability
+monthly_data$ts_list <- apply_publication_lags(monthly_data$ts_list, monthly_publication_lags)
+
 trimmed <- trim_to_overlap(qdat_raw, monthly_data$ts_list, mode = "ragged", fill_method = "locf")
 stationary <- stationarise_quarterly(trimmed$qdat)
 qdat_orig <- trimmed$qdat

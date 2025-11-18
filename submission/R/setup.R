@@ -70,6 +70,15 @@ default_monthly_indicators <- c(
   "smi_monthly_return"
 )
 
+# Publication lag specification (months after month-end)
+# Reflects real-world data availability: some series are published with delay
+monthly_publication_lags <- list(
+  plkopr = 1,              # CPI available 1 month later
+  amarbma_t0 = 1,          # Labor market available 1 month later
+  devkum_eur = 0,          # FX available immediately
+  smi_monthly_return = 0   # SMI available immediately
+)
+
 resolve_monthly_indicators <- function() {
   option_value <- getOption("mfvar.monthly_indicators", NULL)
   if (!is.null(option_value)) {
@@ -119,15 +128,21 @@ estimate_mfvar_model <- function(Y, n_lags, n_fcst, seed = 123) {
   n_reps <- getOption("mfvar.n_reps", 10000L)
   n_burnin <- getOption("mfvar.n_burnin", 5000L)
   n_thin <- getOption("mfvar.n_thin", 1L)
+  
+  # Try tighter prior (lambda1) and different aggregation method to reduce oscillations
+  lambda1 <- getOption("mfvar.lambda1", 0.1)  # default 0.2, smaller = tighter shrinkage
+  aggregation <- getOption("mfvar.aggregation", "first")  # "average", "first", or "last"
+  
   prior_obj <- mfbvar::set_prior(
     Y = Y,
+    aggregation = aggregation,
+    lambda1 = lambda1,
     n_lags = n_lags,
     n_reps = n_reps,
     n_burnin = n_burnin,
     n_thin = n_thin,
     n_fcst = n_fcst,
     d = "intercept",
-    aggregation = "average",
     check_roots = TRUE
   )
   # Once the prior is set up, draw posterior samples for the state-space

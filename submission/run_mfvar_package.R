@@ -122,6 +122,10 @@ qdat_raw <- read_quarterly_data(DATA_DIR)
 monthly_variables <- resolve_monthly_indicators()
 monthly_data <- read_combined_timeseries(DATA_DIR, variables = monthly_variables)
 
+# Apply publication lags to reflect real-world data availability
+# Some series (CPI, labor market) are published 1 month after the reference period
+monthly_data$ts_list <- apply_publication_lags(monthly_data$ts_list, monthly_publication_lags)
+
 trimmed <- trim_to_overlap(
   qdat_raw,
   monthly_data$ts_list,
@@ -139,7 +143,7 @@ ragged_months_observed <- count_observed_months(last_obs_qtr, monthly_ts)
 Y <- build_Y(qdat_adj, monthly_ts)
 
 target_vars <- target_variables
-n_lags <- 5
+n_lags <- 5  # Optimal lag order (3 too few causes instability, 5 is standard)
 
 # --- Estimation and forecasting --------------------------------------------
 # Refit the MF-VAR on the full sample and produce 12 months of forecasts
@@ -184,7 +188,8 @@ if (!identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0") && !is.null(latent_state
       latent_states, 
       qdat_orig, 
       PLOT_DIR,
-      target_variables = target_variables
+      target_variables = target_variables,
+      transforms = transforms
     ),
     error = function(err) {
       warning(sprintf("Latent states vs. actuals plot failed: %s", conditionMessage(err)), call. = FALSE)

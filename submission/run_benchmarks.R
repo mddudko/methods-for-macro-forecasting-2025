@@ -129,6 +129,9 @@ monthly_raw <- read_combined_timeseries(
   variables = resolve_monthly_indicators()
 )
 
+# Apply publication lags to reflect real-world data availability
+monthly_raw$ts_list <- apply_publication_lags(monthly_raw$ts_list, monthly_publication_lags)
+
 # Trim quarterly data to overlap with monthly indicators
 trimmed <- trim_to_overlap(
   qdat_raw,

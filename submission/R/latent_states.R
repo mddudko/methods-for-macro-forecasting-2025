@@ -118,6 +118,7 @@ plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("face
 
 plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir, 
                                              target_variables = c("gdp_growth", "inflation", "exch_rate"),
+                                             transforms = NULL,
                                              filename = NULL) {
   if (!"date" %in% names(states_df)) {
     stop("states_df must contain a 'date' column for plotting.")
@@ -134,6 +135,28 @@ plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir,
     dplyr::mutate(date = as.Date(zoo::as.yearqtr(.data$qtr))) |>
     dplyr::select(date, tidyselect::all_of(target_variables))
   
+  # Detrend the quarterly actuals to match latent states space if transforms provided
+  if (!is.null(transforms)) {
+    for (var in target_variables) {
+      if (var %in% names(qdat_for_plot) && !is.null(transforms[[var]])) {
+        n_obs <- nrow(qdat_for_plot)
+        indices <- seq_len(n_obs)
+        trans <- transforms[[var]]
+        
+        # Remove trend
+        trend_component <- trans$intercept + trans$slope * indices
+        qdat_for_plot[[var]] <- qdat_for_plot[[var]] - trend_component
+        
+        # Remove seasonal
+        if (trans$has_seasonal && length(trans$seasonal) > 0) {
+          season_ids <- ((indices - 1L) %% trans$frequency) + 1L
+          seasonal_component <- trans$seasonal[season_ids]
+          qdat_for_plot[[var]] <- qdat_for_plot[[var]] - seasonal_component
+        }
+      }
+    }
+  }
+  
   # Prepare latent states (select only quarterly target variables)
   available_states <- intersect(target_variables, setdiff(names(states_df), "date"))
   if (length(available_states) == 0) {
@@ -144,6 +167,8 @@ plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir,
   states_for_plot <- states_df |>
     dplyr::mutate(date = as.Date(.data$date)) |>
     dplyr::select(date, tidyselect::all_of(available_states))
+  
+  # Latent states are already in detrended space (matching qdat_adj used for modeling)
   
   # Create long-format data for plotting
   actuals_long <- qdat_for_plot |>
@@ -159,9 +184,9 @@ plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir,
   
   # Create readable variable labels
   var_labels <- c(
-    gdp_growth = "GDP Growth (%)",
-    inflation = "Inflation (%)",
-    exch_rate = "Exchange Rate (log CHF/EUR)"
+    gdp_growth = "GDP Growth (%, detrended)",
+    inflation = "Inflation (%, detrended)",
+    exch_rate = "Exchange Rate (log CHF/EUR, detrended)"
   )
   
   combined <- combined |>
@@ -181,9 +206,9 @@ plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir,
     ) +
     ggplot2::labs(
       title = "MF-VAR Latent States vs. Actual Quarterly Variables",
-      subtitle = "Comparison of posterior mean latent states with observed data",
+      subtitle = "Both series shown in detrended space (deterministic trend + seasonal removed)",
       x = "Date",
-      y = "Value",
+      y = "Detrended Value",
       color = NULL,
       linetype = NULL
     ) +

@@ -1,7 +1,7 @@
 variable,horizon,quarter_end,median
-exch_rate,1-step ahead,2025-12-31,0.9333702775508784
-exch_rate,1-year ahead,2026-09-30,0.926885874749228
-gdp_growth,1-step ahead,2025-12-31,4.021787531991188
-gdp_growth,1-year ahead,2026-09-30,4.356819824832732
-inflation,1-step ahead,2025-12-31,-0.268559385395257
-inflation,1-year ahead,2026-09-30,0.02175787865928383
+exch_rate,1-step ahead,2025-09-30,0.9457702676210079
+exch_rate,1-year ahead,2026-06-30,0.9502536098855167
+gdp_growth,1-step ahead,2025-09-30,-0.4471643215493535
+gdp_growth,1-year ahead,2026-06-30,2.5029617928546948
+inflation,1-step ahead,2025-09-30,-0.4965526001154956
+inflation,1-year ahead,2026-06-30,-0.1634747303271462

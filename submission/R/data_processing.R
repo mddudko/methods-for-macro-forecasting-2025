@@ -8,6 +8,28 @@ utils::globalVariables(c(
 qtr <- rvgdp <- cpi <- wkfreuro <- gdp_growth <- inflation <- exch_rate <- time_index <- NULL
 series <- value <- date <- NULL
 
+apply_publication_lags <- function(ts_list, lag_spec = list()) {
+  if (length(lag_spec) == 0) {
+    return(ts_list)
+  }
+  
+  for (var_name in names(lag_spec)) {
+    lag_months <- lag_spec[[var_name]]
+    if (!is.numeric(lag_months) || lag_months < 0) {
+      warning(sprintf("Invalid lag specification for '%s': %s. Skipping.", var_name, lag_months))
+      next
+    }
+    
+    if (lag_months > 0 && var_name %in% names(ts_list)) {
+      # For ts objects, lag(x, k = -n) shifts series forward by n periods
+      # This makes data "available later", simulating publication delay
+      ts_list[[var_name]] <- stats::lag(ts_list[[var_name]], k = -lag_months)
+    }
+  }
+  
+  ts_list
+}
+
 read_quarterly_data <- function(data_dir) {
   q_path <- file.path(data_dir, "processed", "data_quarterly.csv")
   stopifnot(file.exists(q_path))
@@ -21,7 +43,7 @@ read_quarterly_data <- function(data_dir) {
 
   # Build quarterly growth/log levels, drop the first NA induced by lagging, and
   # retain only the series needed by the MF-VAR.
-  qraw |>
+  qdat <- qraw |>
     dplyr::mutate(qtr = zoo::as.yearqtr(.data$date, format = "%Y-%m")) |>
     dplyr::arrange(.data$qtr) |>
       dplyr::mutate(
@@ -31,6 +53,17 @@ read_quarterly_data <- function(data_dir) {
       ) |>
       tidyr::drop_na() |>
       dplyr::select(dplyr::all_of(c("qtr", "gdp_growth", "inflation", "exch_rate")))
+  
+  # CRITICAL: Filter out forecast data - only keep actuals through 2025 Q2
+  # Data from 2025 Q3 onwards is forecasted and should never be used
+  qdat <- qdat |>
+    dplyr::filter(.data$qtr <= zoo::as.yearqtr("2025 Q2"))
+  
+  if (nrow(qdat) == 0) {
+    stop("No quarterly data remaining after filtering to actuals (through 2025 Q2)")
+  }
+  
+  qdat
 }
 
 fetch_kof_barometer <- function() {
@@ -55,9 +88,14 @@ fetch_kof_barometer <- function() {
 }
 
 read_combined_timeseries <- function(data_dir, variables = NULL, deduplicate = c("first", "mean")) {
+  # Check both data/combined_timeseries.csv and data/processed/combined_timeseries.csv
   combined_path <- file.path(data_dir, "combined_timeseries.csv")
   if (!file.exists(combined_path)) {
-    stop("Combined monthly dataset not found at ", combined_path)
+    combined_path <- file.path(data_dir, "processed", "combined_timeseries.csv")
+  }
+  if (!file.exists(combined_path)) {
+    stop("Combined monthly dataset not found at ", file.path(data_dir, "combined_timeseries.csv"), 
+         " or ", file.path(data_dir, "processed", "combined_timeseries.csv"))
   }
 
   deduplicate <- match.arg(deduplicate)
@@ -410,7 +448,10 @@ window_monthly_series <- function(monthly_list, qdat, back_months = 2L, end_mode
   })
 }
 
-stationarise_quarterly <- function(qdat, vars = c("gdp_growth", "inflation", "exch_rate"), frequency = 4L) {
+stationarise_quarterly <- function(qdat, vars = c("gdp_growth", "inflation", "exch_rate"), 
+                                   frequency = 4L,
+                                   detrend_spec = list(gdp_growth = "mean", inflation = "mean", exch_rate = "full")) {
+  # detrend_spec: "mean" = only center (for growth rates), "full" = trend + seasonal (for levels)
   stopifnot(all(vars %in% names(qdat)))
   n_obs <- nrow(qdat)
   if (!n_obs) {
@@ -438,37 +479,52 @@ stationarise_quarterly <- function(qdat, vars = c("gdp_growth", "inflation", "ex
       next
     }
 
-    # Fit a deterministic linear trend. If the sample is too short for a slope,
-    # fall back to mean-centering.
-    if (sum(finite_mask) >= 2) {
-      trend_fit <- stats::lm(series ~ indices)
-      coef_fit <- stats::coef(trend_fit)
-      intercept <- unname(coef_fit[[1]])
-      slope <- if (length(coef_fit) > 1) unname(coef_fit[[2]]) else 0
-    } else {
+    # Determine transformation level for this variable
+    detrend_mode <- if (var %in% names(detrend_spec)) detrend_spec[[var]] else "full"
+    
+    if (detrend_mode == "mean") {
+      # Growth rates: only remove mean (center), no trend or seasonal
       intercept <- mean(series[finite_mask], na.rm = TRUE)
       slope <- 0
-    }
-
-    trend_component <- intercept + slope * indices
-    detrended <- series - trend_component
-
-    has_seasonal <- isTRUE(frequency > 1L) && (sum(finite_mask) >= frequency)
-    if (has_seasonal) {
-      season_ids <- ((indices - 1L) %% frequency) + 1L
-      season_means <- tapply(detrended, season_ids, mean, na.rm = TRUE)
-      seasonal_pattern <- rep(0, frequency)
-      if (length(season_means)) {
-        seasonal_pattern[as.integer(names(season_means))] <- season_means
-      }
-      seasonal_pattern <- seasonal_pattern - mean(seasonal_pattern, na.rm = TRUE)
-      seasonal_component <- seasonal_pattern[season_ids]
-      adjusted <- detrended - seasonal_component
-    } else {
+      trend_component <- intercept
+      detrended <- series - trend_component
+      
       seasonal_pattern <- rep(0, frequency)
       seasonal_component <- rep(0, n_obs)
       adjusted <- detrended
       has_seasonal <- FALSE
+    } else {
+      # Levels (or anything needing full treatment): trend + seasonal
+      if (sum(finite_mask) >= 2) {
+        trend_fit <- stats::lm(series ~ indices)
+        coef_fit <- stats::coef(trend_fit)
+        intercept <- unname(coef_fit[[1]])
+        slope <- if (length(coef_fit) > 1) unname(coef_fit[[2]]) else 0
+      } else {
+        intercept <- mean(series[finite_mask], na.rm = TRUE)
+        slope <- 0
+      }
+
+      trend_component <- intercept + slope * indices
+      detrended <- series - trend_component
+
+      has_seasonal <- isTRUE(frequency > 1L) && (sum(finite_mask) >= frequency)
+      if (has_seasonal) {
+        season_ids <- ((indices - 1L) %% frequency) + 1L
+        season_means <- tapply(detrended, season_ids, mean, na.rm = TRUE)
+        seasonal_pattern <- rep(0, frequency)
+        if (length(season_means)) {
+          seasonal_pattern[as.integer(names(season_means))] <- season_means
+        }
+        seasonal_pattern <- seasonal_pattern - mean(seasonal_pattern, na.rm = TRUE)
+        seasonal_component <- seasonal_pattern[season_ids]
+        adjusted <- detrended - seasonal_component
+      } else {
+        seasonal_pattern <- rep(0, frequency)
+        seasonal_component <- rep(0, n_obs)
+        adjusted <- detrended
+        has_seasonal <- FALSE
+      }
     }
 
     qdat_adj[[var]] <- adjusted
