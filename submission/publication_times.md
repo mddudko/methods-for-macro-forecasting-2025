@@ -141,3 +141,22 @@ suitable for **adjusting shift** (from 0m,1m to 2m):
 
 
 **We need to make differentiations when it comes to using data in a shifted way, i.e. depending on the y we are predicting, include x's in different times**
+
+
+# Visualization
+
+### High-Level Calendar (Months 1–12)
+
+| Month           | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|-----------------|---|---|---|---|---|---|---|---|---|----|----|----|
+| Quarter         | Q1 | Q1 | Q1 | Q2 | Q2 | Q2 | Q3 | Q3 | Q3 | Q4 | Q4 | Q4 |
+| MP Meeting      | · | · | **MP** | · | · | · | · | · | **MP** | · | · | **MP** |
+
+
+### Quarterly Data Availability (Based on Release Lags)
+
+| Variable                | Shift | Q1 Availability | Q2 Availability | Q3 Availability | Q4 Availability |
+|-------------------------|-------|------------------|------------------|------------------|------------------|
+| **GDP growth**          | 2 months | Month 5 | Month 8 | Month 11 | Month 2 (next yr) |
+| **Quarterly inflation** | 0–2 months | Month 1–3 | Month 4–6 | Month 7–9 | Month 10–12 |
+| **Quarterly exchange rate** | 0–2 months | Month 1–3 | Month 4–6 | Month 7–9 | Month 10–12 |
