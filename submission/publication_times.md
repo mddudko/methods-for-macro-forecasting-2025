@@ -35,7 +35,6 @@ Publikationsdaten:
 
 Source: https://www.bfs.admin.ch/bfs/de/home/statistiken/katalog.html?embargoFrom=2024-11-18T00%3A00%3A00.000Z&extendedSearch=landesindex&institution=900065
 
-**BFS publiziert ihre 
 
 
 ## quarterly exchange rates
@@ -47,9 +46,9 @@ assumptions: I assume SNB publishes the data, `devkum` -> foreign exchange rates
 Publication:
  
 -> 2025-10 -> released 3.11.25 
--> 2025.09 -> released 1.10.25
--> 2025.08 -> released 1.9.25
--> 2028.07 -> released 4.8.25
+-> 2025-09 -> released 1.10.25
+-> 2025-08 -> released 1.9.25
+-> 2027-07 -> released 4.8.25
 
 **here shift 2**
 **SNB released exchange rate data a few days after the month is over -> KOF published quarterly wkfreuro data a couple days after the quarter is over**
@@ -76,15 +75,69 @@ see above...
 
 ### plkopr
 
--  2025-09 -> 21.10.2025 (?) no more info...
+-  2025-10 -> 21.11.2025 
+-  2025-09 -> 21.10.2025
+
+**publishing of plkopr 1 month behind on avg.** -> hence, here a cutoff shift of 1 is more suitable!!
+
+Source: https://data.snb.ch/en/publishingSet/B 
 
 ### SMI
 
 - smi data synthesised from returns/avg. price from start to end of month, -> so available after last business day of the month (i.e. start of next month)
 
+**available after last business day of the month (i.e. start of next month)** 
+
 ### snboffzisa 
-- offizieller zinssatz -> see martin schlegel speeches...
+- offizieller zinssatz is decided after a quarterly monetary policy assessment, which is then published in a press release -> in March, June, September and December
+
+**here, since the data is released every 3 months, approx. we know in advance what the policy rate looks like until next press release**
 
 Source: https://data.snb.ch/de/publishingSet/A
 
-**Data published a couple days after**
+### amarbma
+
+-  2025-10 -> 21.11.2025 
+-  2025-09 -> 21.10.2025
+
+Source: https://data.snb.ch/en/publishingSet/B 
+
+**publishing of plkopr 1 month behind on avg.** -> hence, here a cutoff shift of 1 is more suitable!!
+
+## Fazit!
+
+**quarterly:**
+
+suitable for **permanent** 2m shift:
+-> gdp growth ~ baro 
+-> gdp growth ~ devkum/baro/smi 
+
+For the dataset pertaining to cpi/smi/devkum
+
+
+suitable for **adjusting shift** (from 0m,1m to 2m):
+
+-> qrtly inflation 
+
+-> qrtly exchange rate 
+
+
+**monthly:**
+
+-> available EOM:
+
+- (baro) 
+- devkum
+- smi
+
+-> available 1 month later:
+
+- plkopr
+- amarbma 
+
+-> available 3 months in advance (based on qrtly press release):
+
+- snboffzisa 
+
+
+**We need to make differentiations when it comes to using data in a shifted way, i.e. depending on the y we are predicting, include x's in different times**
