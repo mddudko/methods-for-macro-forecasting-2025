@@ -11,7 +11,33 @@ $$
 
 ## MIDAS Matrix Form
 
-
+$$
+\begin{bmatrix}
+y_1 \\[4pt]
+\vdots \\[4pt]
+y_n
+\end{bmatrix}
+=
+\begin{bmatrix}
+1 & x_{1-0/m} & x_{1-1/m} & \cdots & x_{1-K/m} \\[4pt]
+1 & x_{2-0/m} & x_{2-1/m} & \cdots & x_{2-K/m} \\[4pt]
+\vdots & \vdots & \vdots & & \vdots \\[4pt]
+1 & x_{n-0/m} & x_{n-1/m} & \cdots & x_{n-K/m}
+\end{bmatrix}
+\begin{bmatrix}
+\beta_0 \\[4pt]
+\beta(0;\theta) \\[4pt]
+\beta(1;\theta) \\[4pt]
+\vdots \\[4pt]
+\beta(K;\theta)
+\end{bmatrix}
++
+\begin{bmatrix}
+\varepsilon_1 \\[4pt]
+\vdots \\[4pt]
+\varepsilon_n
+\end{bmatrix}.
+$$
 
 MIDAS r without trend
 $$
