@@ -21,9 +21,9 @@ library(forecast)
 
 ```{r}
 # to render
-# data_raw <- read.csv("../../data/data_quarterly.csv")
-# metadata <- read.csv("../../data/metadata_quarterly.csv")
-# to run 
+data_raw <- read.csv("../../data/data_quarterly.csv")
+metadata <- read.csv("../../data/metadata_quarterly.csv")
+# to run
 data_raw <- read.csv("submission/data/data_quarterly.csv")
 metadata <- read.csv("submission/data/metadata_quarterly.csv")
 
@@ -48,6 +48,44 @@ y <- window(y_ext, start = c(1992, 1), end =  c(2025, 3))  # quarterly
 baro <- get_time_series("ch.kof.barometer")$ch.kof.barometer
 ```
 
+#### account for differences in publication
+
+for more information, see `publication_times.md`
+
+```{r}
+# helper to align monthly indicator with quarterly GDP release lag
+align_monthly_to_quarter <- function(y_ts, x_ts, shift_months, m = 3) {
+  if (shift_months < 0) stop("shift_months must be >= 0")
+  total_months <- length(x_ts)
+  total_quarters <- length(y_ts)
+  if (shift_months >= total_months) stop("shift_months too large for available data")
+  
+  # lead monthly series by the number of months that are already observed when GDP is released
+  x_shifted <- stats::lag(x_ts, -shift_months)
+  
+  available_quarters <- floor((total_months - shift_months) / m)
+  complete_months <- available_quarters * m
+  if (available_quarters < 1) stop("Not enough data left after applying the shift.")
+  
+  # keep only months/quarters that remain observable after the shift
+  x_shifted <- stats::window(
+    x_shifted,
+    end = stats::time(x_shifted)[complete_months]
+  )
+  y_shifted <- stats::window(
+    y_ts,
+    end = stats::time(y_ts)[available_quarters]
+  )
+  
+  list(y = y_shifted, x = x_shifted, quarters = available_quarters)
+}
+
+# try these different publication gaps (0, 1, or 2 months)
+month_shift <- c(0, 1, 2)
+selected_shift <- 0  # average GDP release lag from publication_times.md
+m <- 3  # number of high-frequency observations per quarter
+```
+
 
 #### diff and align monthly series
 ```{r}
@@ -70,6 +108,17 @@ xx0 <- window(baro, start = c(prev_year, prev_month))
 x <- diff(xx0)
 # after diff, both have the same start -> suitable length for midas regression
 x <- window(x, start = c(y_start_year, first_month_of_quarter))
+
+# re-apply the publication lag alignment using the differenced monthly series
+# TODO: try again with 1, 0, compare...
+aligned_series <- align_monthly_to_quarter(
+  y_ts = y,
+  x_ts = x,
+  shift_months = selected_shift,
+  m = m
+)
+y <- aligned_series$y
+x <- aligned_series$x
 ```
 
 
@@ -98,30 +147,114 @@ This is just preliminary until general CV is ready.
 n <- length(y)
 n_val <- ceiling(0.1*n)
 
-
-y_train <- window(y, end = time(y)[n - n_val]) # end 2022.25
-length(y_train) # 121
-
-# compute end time to not have alignment issues
-y_train_end_time <- time(y_train)[length(y_train)]  # e.g., 2022
-
-
+# Split y data
+y_train <- window(y, end = time(y)[n - n_val])
 y_val <- window(y, start = time(y)[n - n_val + 1])
-length(y_val) # 14
 
-x_train <- window(x, end = c(y_train_end_time,3)) # ends 2022,3 -> needs to be length(x)/m=length(y)
-length(x_train) # 363
+# Get the end quarter of y_train
+y_train_end_quarter <- time(y_train)[length(y_train)]
+y_train_end_year <- floor(y_train_end_quarter)
+y_train_end_q <- round((y_train_end_quarter - y_train_end_year) * 4) + 1
 
-x_val <- window(x, start = c(y_train_end_time,5))
-length(x_val) # 42
+# Calculate when that quarter's GDP was published (2 months after quarter end)
+# Q1 ends in March -> published in May (month 5)
+# Q2 ends in June -> published in August (month 8)  
+# Q3 ends in September -> published in November (month 11)
+# Q4 ends in December -> published in February (month 2 of next year)
+publication_months <- c(5, 8, 11, 2)  # months when GDP is published (2 months after quarter end)
+publication_month <- publication_months[y_train_end_q]
+
+# If Q4, publication is in February of next year
+if (y_train_end_q == 4) {
+  x_train_end_year <- y_train_end_year + 1
+  x_train_end_month <- publication_month
+} else {
+  x_train_end_year <- y_train_end_year
+  x_train_end_month <- publication_month
+}
+
+# x_train ends at the publication month of the last y_train quarter
+# This ensures we only use monthly data that was available when that quarter's GDP was published
+x_train <- window(x, end = c(x_train_end_year, x_train_end_month))
+
+# Verify x_train length matches y_train (accounting for m months per quarter)
+# After alignment, x_train should have length(y_train) * m months
+if (length(x_train) != length(y_train) * m) {
+  # Adjust to match exactly
+  required_x_train_length <- length(y_train) * m
+  if (length(x_train) > required_x_train_length) {
+    # Trim excess months
+    x_train <- window(x_train, end = time(x_train)[required_x_train_length])
+  } else {
+    # This shouldn't happen if alignment worked correctly, but handle it
+    warning("x_train shorter than expected. Check alignment.")
+  }
+}
+
+# Get the start quarter of y_val to determine when it was published
+y_val_start_quarter <- time(y_val)[1]
+y_val_start_year <- floor(y_val_start_quarter)
+y_val_start_q <- round((y_val_start_quarter - y_val_start_year) * 4) + 1
+
+# Calculate when that quarter's GDP was published (2 months after quarter end)
+# Q1 ends in March -> published in May (month 5)
+# Q2 ends in June -> published in August (month 8)  
+# Q3 ends in September -> published in November (month 11)
+# Q4 ends in December -> published in February (month 2 of next year)
+y_val_publication_month <- publication_months[y_val_start_q]
+
+# If Q4, publication is in February of next year
+if (y_val_start_q == 4) {
+  x_val_start_year <- y_val_start_year + 1
+  x_val_start_month <- y_val_publication_month
+} else {
+  x_val_start_year <- y_val_start_year
+  x_val_start_month <- y_val_publication_month
+}
+
+# x_val should have exactly length(y_val) * m months
+required_x_val_length <- length(y_val) * m
+x_val_end_month <- x_val_start_month + required_x_val_length - 1
+x_val_end_year <- x_val_start_year
+while (x_val_end_month > 12) {
+  x_val_end_month <- x_val_end_month - 12
+  x_val_end_year <- x_val_end_year + 1
+}
+
+x_val <- window(x, start = c(x_val_start_year, x_val_start_month),
+                end = c(x_val_end_year, x_val_end_month))
+
+# Verify alignment
+cat("y_train: ", start(y_train), "to", end(y_train), "(", length(y_train), "quarters)\n")
+cat("x_train: ", start(x_train), "to", end(x_train), "(", length(x_train), "months, should be", length(y_train) * m, ")\n")
+cat("y_val: ", start(y_val), "to", end(y_val), "(", length(y_val), "quarters)\n")
+cat("x_val: ", start(x_val), "to", end(x_val), "(", length(x_val), "months, should be", length(y_val) * m, ")\n")
 
 trend_train <- 1:length(y_train)
 trend_val <- (length(y_train)+1) : (length(y_train)+length(y_val))
-length(trend_val) # 14
+```
+
+#### check data
+
+```{r}
+tail(y_train)
+tail(x_train)
 ```
 
 ## Fit Models
 
+#### beispiel, show fmls()
+
+```{r}
+# print(fmls(x=x_train, k=2, m=3))
+head(y_train)
+# mls(y_train, k=2, m=1)
+# mls(y_train, k=1, m=1) 
+# mls(y_train, k=1:2, m=1) 
+# TODO: mls(y_train, k=1:2, m=1)
+# mls(y_train, k=2, m=1)
+
+```
 
 #### benchmark models
 
@@ -130,16 +263,8 @@ length(trend_val) # 14
 ar1 <- stats::arima(y_train, order = c(2, 0, 0))
 summary(ar1)
 
-# Random walk w/ drift -> auto.arima generates if no AR or MA component needed 
-# rw_no_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
-# summary(rw_no_drift)
-```
-
-### simulate random walk 
-
-```{r}
-rw_no_drift <- forecast::rwf(y_train, h = length(y_val), drift = TRUE)
-summary(rw_no_drift)
+rw <- forecast::rwf(y_train, h = length(y_val), drift = TRUE)
+summary(rw)
 ```
 
 <!-- TODO: use forecast package cross validation -->
@@ -156,8 +281,6 @@ pacf(y)
 
 We can see, lag 2 significant 
 
-
-
 ```{r midas}
 # check length of fmls matrix 
 
@@ -170,7 +293,8 @@ length(f)
 m_ar1_t <- midas_r(
   y_train ~ 
   trend_train + # incl. trend 
-  mls(y_train, k=2, m=1) +  # only lag 2
+  mls(y_train, k=1:2, m=1) +
+  # mls(y_train, k=2, m=1) +  # only lag 2
   fmls(x_train, k=2, m=3), # max lag 1 year # add nealmon sometime
   start = list(x_train = rep(0, 3))
   )
@@ -184,7 +308,8 @@ summary(m_ar1_t)
 # without trend
 m_ar1 <- midas_r(
   y_train ~ 
-  mls(y_train, k=2, m=1) + # only lag 2
+  mls(y_train, k=1:2, m=1) +
+  # mls(y_train, k=2, m=1) + # only lag 2
   fmls(x=x_train, k=2, m=3), # max lag 1 year # add nealmon sometime
   start = list(x_train = rep(0, 3))
   )
@@ -201,15 +326,6 @@ summary(m_ar1)
 # forecast::summary(mu_it)
 ```
 
-#### beispiel, show fmls()
-
-```{r}
-# print(fmls(x=x_train, k=2, m=3))
-# mls(y_train, k=1, m=1) 
-# mls(y_train, k=2, m=1)
-
-
-```
 
 ## Forecast 
 
@@ -274,9 +390,10 @@ length(m_ar1_forecast)
 h <- length(m_ar1_t_forecast)
 
 ar_forecast <- forecast(ar1, h=h)$mean
-print(ar_forecast)
- 
-# rw_forecast <- forecast(rw_no_drift, h=h)$mean
+rw_forecast <- rw$mean[seq_len(h)]
+print(length(rw_forecast))
+print(length(ar_forecast))
+# TODO: length 14 but rest is length 13
 ```
 
 ### create Plot DF
@@ -318,7 +435,7 @@ ggplot(df_plot, aes(x = time)) +
   theme_minimal(base_size = 14) +
   geom_vline(xintercept = T, linetype = "dashed")
 
-ggsave(filename = "../../output/midas_forecast_plot.png", width = 10, height = 6, dpi = 300)
+ggsave(filename = "../../output/midas_forecast_plot_shifted.png", width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -340,7 +457,7 @@ eval_df <- tail(df_plot, h) |>
 
 # Calculate MSE for each model
 mse_results <- data.frame(
-  Model = c("MIDAS with trend", "MIDAS without trend", "AR(2)", "Random Walk"
+  Model = c("MIDAS with trend", "MIDAS without trend", "AR(1)", "Random Walk"
   # , "MU with trend"
   ),
   MSE = c(
@@ -366,13 +483,13 @@ print("Detailed errors by time period:")
 # print(eval_df |> select(-c('time')))
 print("\nSummary MSE/RMSE by model:")
 print(mse_results)
-write.csv(mse_results, file = "../../output/mse_results.csv")
+write.csv(mse_results, file = "../../output/mse_results_shifted.csv")
 ```
 
 ```{r}
 # Random walk w/ drift -> auto.arima generates if no AR or MA component needed 
-# rw_no_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
-# summary(rw_no_drift)
+# rw_drift <- forecast::auto.arima(y_train) # ARIMA (0,1,0)
+# summary(rw_drift)
 ```
 
 So for now, the `auto.arima` fitted model, which is a random walk, see output  with trend performs better than the model without trend.
