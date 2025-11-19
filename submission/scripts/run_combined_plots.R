@@ -11,7 +11,9 @@ if (!interactive()) {
   file_arg <- grep("^--file=", args_all, value = TRUE)
   if (length(file_arg)) {
     script_path <- normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE)
-    setwd(dirname(script_path))
+    script_dir <- dirname(script_path)
+    project_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
+    setwd(project_root)
   }
 }
 
@@ -29,6 +31,7 @@ start_time <- Sys.time()
 DATA_DIR <- file.path(".", "data")
 MFVAR_DIR <- file.path(".", "output", "forecasts", "mfvar")
 MIDAS_DIR <- file.path(".", "output", "forecasts", "midas")
+MFVAR2_DIR <- file.path(".", "output", "forecasts", "mfvar2")
 OUT_DIR <- file.path(".", "output", "forecasts", "combined")
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
@@ -38,6 +41,7 @@ message("Loading model forecasts...")
 # Check if forecast files exist
 mfvar_path <- file.path(MFVAR_DIR, "csv", "mfvar_forecasts_full.csv")
 midas_path <- file.path(MIDAS_DIR, "csv", "midas_forecasts_full.csv")
+mfvar2_path <- file.path(MFVAR2_DIR, "csv", "mfvar2_forecasts_quarterly.csv")
 
 if (!file.exists(mfvar_path)) {
   stop("MF-VAR forecasts not found. Run: Rscript scripts/run_mfvar_package.R")
@@ -47,10 +51,31 @@ if (!file.exists(midas_path)) {
   stop("MIDAS forecasts not found. Run: Rscript scripts/run_midas.R")
 }
 
+# Manual MF-VAR forecasts are optional; warn if missing but continue.
+has_mfvar2 <- file.exists(mfvar2_path)
+if (!has_mfvar2) {
+  message("MF-VAR manual forecasts not found; combined plots will omit this overlay.")
+}
+
 # Load full forecasts to get all quarters (not just targets)
 mfvar_fc <- readr::read_csv(mfvar_path, show_col_types = FALSE) |>
   dplyr::filter(variable %in% c("gdp_growth", "inflation", "exch_rate"))
 midas_fc <- readr::read_csv(midas_path, show_col_types = FALSE)
+
+target_vars <- target_variables
+
+mfvar_manual_fc <- NULL
+if (has_mfvar2) {
+  mfvar_manual_fc <- readr::read_csv(mfvar2_path, show_col_types = FALSE) |>
+    dplyr::filter(variable %in% target_vars) |>
+    dplyr::filter(dplyr::near(.data$quantile, 0.5)) |>
+    dplyr::mutate(
+      quarter_end = as.Date(.data$quarter_end),
+      median = .data$value
+    ) |>
+    dplyr::arrange(variable, quarter_end)
+  message("Including MF-VAR manual forecasts in combined plots.")
+}
 
 # --- Load historical data ----------------------------------------------------
 qdat_raw <- read_quarterly_data(DATA_DIR)
@@ -88,8 +113,6 @@ midas_fc <- midas_fc |>
     aligned_qtr = last_obs_qtr + (step_ahead / 4),
     aligned_quarter_end = zoo::as.Date(aligned_qtr, frac = 1)
   )
-
-target_vars <- target_variables
 
 # --- Generate AR(2) forecasts ------------------------------------------------
 message("Generating AR(2) benchmark forecasts...")
@@ -223,6 +246,16 @@ gdp_midas <- midas_fc |>
     midas_simple = midas_simple
   )
 
+gdp_manual <- NULL
+if (!is.null(mfvar_manual_fc) && nrow(mfvar_manual_fc)) {
+  gdp_manual <- mfvar_manual_fc |>
+    dplyr::filter(variable == "gdp_growth") |>
+    dplyr::transmute(
+      time = quarter_end,
+      median = median
+    )
+}
+
 gdp_history <- tibble::tibble(
   time = zoo::as.Date(qdat_orig$qtr, frac = 1),
   value = qdat_orig$gdp_growth
@@ -235,6 +268,7 @@ if (nrow(gdp_mfvar) > 0 && nrow(gdp_midas) > 0) {
     ar_df = ar2_forecasts$gdp_growth,
     history_df = gdp_history,
     latent_df = latent_overlays$gdp_growth,
+    mfvar_manual_df = gdp_manual,
     out_dir = OUT_DIR,
     title = "GDP growth: all model forecasts",
     y_label = "Annualised percentage",
@@ -258,6 +292,16 @@ infl_midas <- midas_fc |>
     midas_simple = midas_simple
   )
 
+infl_manual <- NULL
+if (!is.null(mfvar_manual_fc) && nrow(mfvar_manual_fc)) {
+  infl_manual <- mfvar_manual_fc |>
+    dplyr::filter(variable == "inflation") |>
+    dplyr::transmute(
+      time = quarter_end,
+      median = median
+    )
+}
+
 infl_history <- tibble::tibble(
   time = zoo::as.Date(qdat_orig$qtr, frac = 1),
   value = qdat_orig$inflation
@@ -270,6 +314,7 @@ if (nrow(infl_mfvar) > 0 && nrow(infl_midas) > 0) {
     ar_df = ar2_forecasts$inflation,
     history_df = infl_history,
     latent_df = latent_overlays$inflation,
+    mfvar_manual_df = infl_manual,
     out_dir = OUT_DIR,
     title = "Inflation: all model forecasts",
     y_label = "Annualised percentage",
@@ -293,6 +338,16 @@ exch_midas <- midas_fc |>
     midas_simple = exp(midas_simple)
   )
 
+exch_manual <- NULL
+if (!is.null(mfvar_manual_fc) && nrow(mfvar_manual_fc)) {
+  exch_manual <- mfvar_manual_fc |>
+    dplyr::filter(variable == "exch_rate") |>
+    dplyr::transmute(
+      time = quarter_end,
+      median = median
+    )
+}
+
 exch_history <- tibble::tibble(
   time = zoo::as.Date(qdat_orig$qtr, frac = 1),
   value = exp(qdat_orig$exch_rate)
@@ -305,6 +360,7 @@ if (nrow(exch_mfvar) > 0 && nrow(exch_midas) > 0) {
     ar_df = ar2_forecasts$exch_rate,
     history_df = exch_history,
     latent_df = latent_overlays$exch_rate,
+    mfvar_manual_df = exch_manual,
     out_dir = OUT_DIR,
     title = "Exchange rate: all model forecasts",
     y_label = "CHF per EUR",

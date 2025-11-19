@@ -222,16 +222,17 @@ plot_exch_rate_forecasts_with_history <- function(fc_exch, ar_exch, qdat, out_di
 }
 
 plot_combined_forecasts <- function(
-    mfvar_df,
-    midas_df,
-    ar_df,
-    history_df,
-    out_dir,
-    title,
-    y_label,
-    file_name,
-    latent_df = NULL,
-    context_quarters = combined_context_quarters) {
+  mfvar_df,
+  midas_df,
+  ar_df,
+  history_df,
+  out_dir,
+  title,
+  y_label,
+  file_name,
+  latent_df = NULL,
+  mfvar_manual_df = NULL,
+  context_quarters = combined_context_quarters) {
   # Plot all models together: MF-VAR, MIDAS (trend & simple), and AR(2)
   stopifnot(nrow(mfvar_df) > 0, nrow(history_df) > 0)
 
@@ -247,6 +248,12 @@ plot_combined_forecasts <- function(
   mfvar_plot <- mfvar_df |>
     dplyr::mutate(time = as.Date(time))
 
+  mfvar_manual_plot <- NULL
+  if (!is.null(mfvar_manual_df) && nrow(mfvar_manual_df)) {
+    mfvar_manual_plot <- mfvar_manual_df |>
+      dplyr::mutate(time = as.Date(time))
+  }
+
   midas_plot <- midas_df |>
     dplyr::mutate(time = as.Date(time))
 
@@ -256,9 +263,13 @@ plot_combined_forecasts <- function(
       dplyr::mutate(time = as.Date(time))
   }
 
+  forecast_end <- c(mfvar_plot$time, midas_plot$time)
+  if (!is.null(mfvar_manual_plot) && nrow(mfvar_manual_plot)) {
+    forecast_end <- c(forecast_end, mfvar_manual_plot$time)
+  }
   ar_plot <- ar_df |>
     dplyr::mutate(time = as.Date(time)) |>
-    dplyr::filter(time <= max(mfvar_plot$time, midas_plot$time))
+    dplyr::filter(time <= max(forecast_end))
 
   if (!nrow(hist_plot)) {
     stop("History data contains no finite values for combined plot")
@@ -285,6 +296,18 @@ plot_combined_forecasts <- function(
     )
     mfvar_plot <- dplyr::bind_rows(anchor_mfvar, mfvar_plot) |>
       dplyr::arrange(time)
+  }
+
+  if (!is.null(mfvar_manual_plot) && nrow(mfvar_manual_plot)) {
+    first_manual <- min(mfvar_manual_plot$time)
+    if (first_manual > last_actual) {
+      anchor_manual <- tibble::tibble(
+        time = last_actual,
+        median = last_value
+      )
+      mfvar_manual_plot <- dplyr::bind_rows(anchor_manual, mfvar_manual_plot) |>
+        dplyr::arrange(time)
+    }
   }
 
   first_midas <- min(midas_plot$time)
@@ -320,6 +343,9 @@ plot_combined_forecasts <- function(
   }
 
   x_values <- c(hist_plot$time, mfvar_plot$time, midas_plot$time, ar_plot$time)
+  if (!is.null(mfvar_manual_plot) && nrow(mfvar_manual_plot)) {
+    x_values <- c(x_values, mfvar_manual_plot$time)
+  }
   if (!is.null(latent_plot) && nrow(latent_plot)) {
     x_values <- c(x_values, latent_plot$time)
   }
@@ -338,6 +364,7 @@ plot_combined_forecasts <- function(
   
   colour_values <- c(
     "MF-VAR" = "#1b9e77",
+    "MF-VAR (manual)" = "#0b7189",
     "MIDAS (trend)" = "#7570b3",
     "MIDAS (simple)" = "#e7298a",
     "MIDAS-Latent (trend)" = "#66a61e",
@@ -354,6 +381,24 @@ plot_combined_forecasts <- function(
       linewidth = 1,
       inherit.aes = FALSE
     ) +
+    {
+      if (!is.null(mfvar_manual_plot) && nrow(mfvar_manual_plot)) {
+        list(
+          ggplot2::geom_line(
+            data = mfvar_manual_plot,
+            mapping = ggplot2::aes(x = time, y = median, colour = "MF-VAR (manual)"),
+            linewidth = 0.9,
+            inherit.aes = FALSE
+          ),
+          ggplot2::geom_point(
+            data = mfvar_manual_plot,
+            mapping = ggplot2::aes(x = time, y = median, colour = "MF-VAR (manual)"),
+            size = 1.8,
+            inherit.aes = FALSE
+          )
+        )
+      }
+    } +
     ggplot2::geom_point(
       data = mfvar_plot,
       mapping = ggplot2::aes(x = time, y = median, colour = "MF-VAR"),
