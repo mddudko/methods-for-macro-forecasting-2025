@@ -171,9 +171,9 @@ n_lags <- 5
 
 mfvar2_cv_config <- list(
   p = 2L,
-  n_draws = if (fast_mode) 800L else 2000L,
-  burnin = if (fast_mode) 250L else 700L,
-  n_sim = if (fast_mode) 250L else 600L,
+  n_draws = if (fast_mode) 1000L else 4000L,
+  burnin = if (fast_mode) 300L else 1000L,
+  n_sim = if (fast_mode) 250L else 1000L,
   hyperparameters = list(
     lambda1 = 0.04,
     lambda2 = 1.0,
