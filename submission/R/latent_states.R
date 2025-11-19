@@ -131,8 +131,12 @@ plot_latent_states_with_actuals <- function(states_df, qdat_orig, out_dir,
   }
   
   # Convert quarterly data to dates (use quarter end dates for alignment)
-  qdat_for_plot <- qdat_orig |>
-    dplyr::mutate(date = as.Date(zoo::as.yearqtr(.data$qtr))) |>
+  # Convert qtr column to yearqtr first, then to Date
+  qdat_with_date <- qdat_orig
+  qtr_yearqtr <- zoo::as.yearqtr(qdat_orig$qtr)
+  qdat_with_date$date <- zoo::as.Date(qtr_yearqtr, frac = 1)  # Use zoo::as.Date for yearqtr objects
+  
+  qdat_for_plot <- qdat_with_date |>
     dplyr::select(date, tidyselect::all_of(target_variables))
   
   # Detrend the quarterly actuals to match latent states space if transforms provided
