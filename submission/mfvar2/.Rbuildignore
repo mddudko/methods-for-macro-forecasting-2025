@@ -1,0 +1,11 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.git$
+^\.gitignore$
+^README_OLD\.md$
+^QUICKSTART\.md$
+^inst/results_archive$
+^inst/scripts/.*\.log$
+^inst/scripts/.*\.rds$
+^\.DS_Store$
+^.*~$

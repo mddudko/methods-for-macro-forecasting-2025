@@ -1,0 +1,251 @@
+---
+title: "Getting Started with mfvar2"
+author: "Sam Bartlett"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with mfvar2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE # Set to TRUE when data is available
+)
+```
+
+## Introduction
+
+The `mfvar2` package implements mixed frequency Bayesian vector autoregression (MF-BVAR) for macroeconomic forecasting, with particular focus on Swiss National Bank (SNB) data. The methodology combines:
+
+- **Mariano & Murasawa (2003)** for mixed frequency modeling
+- **Schorfheide & Song (2013)** for MF-VAR forecasting
+- **Durbin & Koopman (2001)** for state-space methods
+- **Giannone et al. (2008)** for empirical Bayes hyperparameter selection
+- **Litterman/Doan** for Minnesota prior
+
+## Basic Workflow
+
+### Step 1: Load and Prepare Data
+
+```{r data_prep}
+library(mfvar2)
+
+# Prepare SNB data
+data_prepared <- prepare_data_snb(
+  data_sources = c("path/to/cpi.csv", "path/to/gdp.csv"),
+  quarterly_vars = c("gdp", "investment"),
+  flow_vars = c("gdp"), # GDP is flow-type
+  start_date = "2000-01-01",
+  end_date = "2024-12-31",
+  log_transform = c("cpi", "gdp", "investment"),
+  difference = TRUE, # Apply differencing based on unit root tests
+  verbose = TRUE
+)
+
+# Inspect prepared data
+print(data_prepared)
+summary(data_prepared$metadata)
+```
+
+### Step 2: Tune Hyperparameters
+
+```{r hyperparameter_tuning}
+# Tune Minnesota prior tightness λ via marginal data density
+hyper_optimal <- tune_minnesota_hyper(
+  data_prepared = data_prepared,
+  p = 6, # 6 lags for monthly data
+  lambda_grid = c(0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 5.0),
+  refine_continuous = TRUE,
+  verbose = TRUE,
+  seed = 123
+)
+
+# View results
+print(hyper_optimal)
+
+# Plot marginal data density over grid
+plot_mdd_grid(hyper_optimal)
+```
+
+### Step 3: Estimate MF-BVAR
+
+```{r estimation}
+# Estimate Bayesian VAR with Gibbs sampling
+posterior <- estimate_mf_bvar(
+  data_prepared = data_prepared,
+  p = 6,
+  hyperparameters = hyper_optimal,
+  n_draws = 5000,
+  burnin = 1000,
+  thinning = 2,
+  verbose = TRUE,
+  seed = 456
+)
+
+# Inspect posterior
+print(posterior)
+
+# Posterior mean coefficients
+print(posterior$A_mean)
+
+# Posterior mean residual covariance
+print(posterior$Sigma_mean)
+```
+
+### Step 4: Generate Forecasts
+
+```{r forecasting}
+# Generate predictive distributions
+forecasts <- forecast_mf_bvar(
+  posterior = posterior,
+  horizon_months = 12,
+  n_sim = 1000,
+  seed = 789
+)
+
+# Inspect forecasts
+print(forecasts)
+
+# Monthly forecasts for CPI
+print(forecasts$forecasts_monthly["cpi", , ])
+
+# Quarterly forecasts for GDP
+print(forecasts$forecasts_quarterly[["gdp"]])
+```
+
+### Step 5: Visualize with Fan Charts
+
+```{r fan_charts, fig.width=7, fig.height=5}
+# Fan chart for CPI
+plot_fan_chart(
+  forecast = forecasts,
+  variable = "cpi",
+  intervals = c(0.5, 0.7, 0.9)
+)
+
+# Fan chart for GDP
+plot_fan_chart(
+  forecast = forecasts,
+  variable = "gdp",
+  intervals = c(0.5, 0.7, 0.9)
+)
+```
+
+### Step 6: Rolling Window Evaluation
+
+```{r rolling_window}
+# Out-of-sample forecast evaluation
+eval_results <- rolling_forecasts_mf_bvar(
+  data_prepared = data_prepared,
+  p = 6,
+  window_type = "expanding",
+  min_window = 120, # 10 years minimum
+  horizons = c(1, 3, 6, 12),
+  n_draws = 2000,
+  burnin = 500,
+  reuse_hyperparams = TRUE,
+  include_ar2 = TRUE,
+  verbose = TRUE,
+  seed = 999
+)
+```
+
+### Step 7: Compare with AR(2) Benchmarks
+
+```{r evaluation}
+# Evaluate forecast accuracy
+accuracy <- evaluate_forecast_accuracy(
+  mfvar_forecasts = eval_results$mfvar_forecasts,
+  ar2_forecasts = eval_results$ar2_forecasts,
+  actuals = eval_results$actuals
+)
+
+# View results
+print(accuracy)
+
+# RMSE ratios (values < 1 mean MF-BVAR is better)
+print(accuracy$RMSE_ratio)
+```
+
+## Advanced Usage
+
+### Custom Hyperparameters
+
+```{r custom_hyper}
+# Manually specify hyperparameters
+custom_hyper <- list(
+  lambda = 0.5,
+  theta = 1.0,
+  kappa_cross = 0.5
+)
+
+posterior_custom <- estimate_mf_bvar(
+  data_prepared = data_prepared,
+  p = 6,
+  hyperparameters = custom_hyper,
+  n_draws = 5000,
+  seed = 123
+)
+```
+
+### Rolling vs Expanding Windows
+
+```{r rolling_types}
+# Expanding window (default)
+eval_expanding <- rolling_forecasts_mf_bvar(
+  data_prepared = data_prepared,
+  p = 6,
+  window_type = "expanding",
+  min_window = 120
+)
+
+# Rolling window with fixed width
+eval_rolling <- rolling_forecasts_mf_bvar(
+  data_prepared = data_prepared,
+  p = 6,
+  window_type = "rolling",
+  rolling_width = 120,
+  min_window = 120
+)
+```
+
+## Methodological Notes
+
+### Mixed Frequency Handling
+
+- **Monthly variables**: Directly observed each month
+- **Stock quarterly variables**: Observed at quarter-end (Mar, Jun, Sep, Dec)
+- **Flow quarterly variables**: Sum of three monthly values (Mariano-Murasawa aggregation)
+
+### Minnesota Prior
+
+- **Prior mean**: Own first lag = 1 (random walk), others = 0
+- **Prior variance**: $\text{Var}(A_{ij}^{(l)}) = \frac{\lambda^2 \kappa_{ij}^2}{l^\theta} \frac{\sigma_i^2}{\sigma_j^2}$
+- **Hyperparameters**:
+  - $\lambda$: overall tightness (optimized via MDD)
+  - $\theta$: lag decay (default: 1)
+  - $\kappa$: cross-equation shrinkage (default: 0.5)
+
+### Gibbs Sampler
+
+Three-step iteration:
+
+1. **Draw states**: Carter-Kohn simulation smoother
+2. **Draw coefficients**: Equation-by-equation Normal posterior
+3. **Draw variances**: Inverse-Gamma posterior
+
+## References
+
+1. Mariano, R. S., & Murasawa, Y. (2003). A new coincident index of business cycles based on monthly and quarterly series. *Journal of Applied Econometrics*, 18(4), 427-443.
+
+2. Schorfheide, F., & Song, D. (2013). Real-time forecasting with a mixed-frequency VAR. *NBER Working Paper*.
+
+3. Durbin, J., & Koopman, S. J. (2001). *Time Series Analysis by State Space Methods*. Oxford University Press.
+
+4. Giannone, D., Lenza, M., & Primiceri, G. E. (2008). Priors for the long run. *Manuscript*, Universite Libre de Bruxelles.
+
+5. Litterman, R. B. (1986). Forecasting with Bayesian vector autoregressions—five years of experience. *Journal of Business & Economic Statistics*, 4(1), 25-38.

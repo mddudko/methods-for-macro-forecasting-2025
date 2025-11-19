@@ -1,0 +1,41 @@
+Package: mfvar2
+Type: Package
+Title: Mixed Frequency Bayesian Vector Autoregression
+Version: 0.1.0
+Authors@R: c(
+    person("Sam", "Bartlett", email = "sam.bartlett@example.com", role = c("aut", "cre")),
+    person("Contributors", "", role = "ctb")
+    )
+Description: Implements mixed frequency Bayesian VAR following Schorfheide & Song 
+    (2015) with Minnesota prior, state-space representation, and empirical Bayes 
+    hyperparameter selection. Handles monthly and quarterly macroeconomic variables 
+    jointly without pre-aggregation. Supports flow-type quarterly aggregation 
+    (Mariano & Murasawa 2003), real-time data vintages, Carter-Kohn simulation 
+    smoother for latent states, and marginal data density maximization (Geweke 1999) 
+    for automatic prior tuning. Uses KFAS for numerically stable Kalman filtering. 
+    Provides comprehensive forecast evaluation, diagnostic tools, and publication-
+    quality fan charts with AR(2) benchmark comparisons.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+URL: https://github.com/yourusername/mfvar2
+BugReports: https://github.com/yourusername/mfvar2/issues
+Depends:
+    R (>= 3.6.0)
+Imports:
+    zoo,
+    xts,
+    KFAS,
+    ggplot2,
+    mvtnorm,
+    Matrix,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    urca,
+    tseries
+RoxygenNote: 7.2.0
+VignetteBuilder: knitr
