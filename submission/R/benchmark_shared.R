@@ -1,4 +1,5 @@
 months_per_quarter <- 3L
+mfvar_manual_label <- "MF-VAR (manual)"
 
 label_horizon <- function(step) {
   dplyr::case_when(
@@ -205,6 +206,122 @@ forecast_mfvar <- function(
   result
 }
 
+forecast_mfvar_manual <- function(
+    data_dir,
+    cutoff_quarter,
+    extra_months,
+    horizon_quarters,
+    target_vars,
+    mfvar2_opts,
+    seed = 321L) {
+  default_tbl <- tibble::tibble(
+    variable = rep(target_vars, each = horizon_quarters),
+    step_ahead = rep(seq_len(horizon_quarters), times = length(target_vars)),
+    prediction = NA_real_,
+    model = mfvar_manual_label
+  )
+
+  if (!requireNamespace("mfvar2", quietly = TRUE)) {
+    warning("mfvar2 package not available; skipping MF-VAR (manual).", call. = FALSE)
+    return(default_tbl)
+  }
+
+  end_year_month <- add_months(quarter_to_month_end(cutoff_quarter), extra_months)
+  end_yearmon <- zoo::as.yearmon(sprintf("%04d-%02d", end_year_month[1], end_year_month[2]))
+  end_date <- zoo::as.Date(end_yearmon, frac = 1)
+
+  adapter <- try(
+    prepare_mfvar2_input(
+      data_dir = data_dir,
+      quarterly_vars = target_vars,
+      end_date = end_date,
+      verbose = FALSE
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(adapter, "try-error")) {
+    warning(sprintf("MF-VAR (manual) data prep failed: %s", as.character(adapter)), call. = FALSE)
+    return(default_tbl)
+  }
+
+  opts <- modifyList(list(
+    p = 2L,
+    n_draws = 1200L,
+    burnin = 400L,
+    n_sim = 400L,
+    hyperparameters = list(
+      lambda1 = 0.2,
+      lambda2 = 1.0,
+      lambda3 = 1.0,
+      lambda4 = 1.0,
+      lambda5 = 1.0
+    ),
+    verbose = FALSE
+  ), mfvar2_opts)
+
+  posterior <- try(
+    mfvar2::estimate_mf_bvar(
+      data_prepared = adapter$prepared,
+      p = opts$p,
+      hyperparameters = opts$hyperparameters,
+      n_draws = opts$n_draws,
+      burnin = opts$burnin,
+      thinning = 1L,
+      verbose = opts$verbose,
+      seed = seed
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(posterior, "try-error")) {
+    warning(sprintf("MF-VAR (manual) estimation failed: %s", as.character(posterior)), call. = FALSE)
+    return(default_tbl)
+  }
+
+  horizon_months <- horizon_quarters * months_per_quarter
+  forecast_obj <- try(
+    mfvar2::forecast_mf_bvar(
+      posterior = posterior,
+      horizon_months = horizon_months,
+      n_sim = opts$n_sim,
+      seed = seed
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(forecast_obj, "try-error")) {
+    warning(sprintf("MF-VAR (manual) forecast failed: %s", as.character(forecast_obj)), call. = FALSE)
+    return(default_tbl)
+  }
+
+  quantiles <- forecast_obj$quantiles
+  median_idx <- which.min(abs(quantiles - 0.5))
+  if (!length(median_idx) || is.na(median_idx)) {
+    median_idx <- 1L
+  }
+
+  preds <- purrr::map_dfr(target_vars, function(var) {
+    qmat <- forecast_obj$forecasts_quarterly[[var]]
+    if (is.null(qmat) || !nrow(qmat)) {
+      return(tibble::tibble(variable = var, step_ahead = seq_len(horizon_quarters), prediction = NA_real_))
+    }
+    steps_available <- min(horizon_quarters, nrow(qmat))
+    vals <- qmat[seq_len(steps_available), median_idx]
+    if (var == "exch_rate") {
+      vals <- exp(vals)
+    }
+    tibble::tibble(
+      variable = var,
+      step_ahead = seq_len(horizon_quarters),
+      prediction = c(vals, rep(NA_real_, horizon_quarters - steps_available))
+    )
+  }) |>
+    dplyr::mutate(model = mfvar_manual_label)
+
+  preds
+}
+
 make_ar_generator <- function(q_train_adj, transforms, time_indices, horizon_steps, base_context) {
   function(var) {
     horizon_len <- length(horizon_steps)
@@ -386,10 +503,15 @@ assemble_extra_month_predictions <- function(
     horizon_months,
     idx,
     cutoff_label,
+    cutoff_quarter,
     forecast_quarters,
     quarter_end_dates,
     ar_base,
-    train_rows) {
+    train_rows,
+    data_dir,
+    models_to_run,
+    mfvar2_opts = list()) {
+  include_model <- function(label) label %in% models_to_run
   warn_suffix <- sprintf("at fold %s (%s)", cutoff_label, coverage_label(extra_months))
 
   train_last_qtr_cv <- q_train_orig$qtr[nrow(q_train_orig)]
@@ -398,32 +520,38 @@ assemble_extra_month_predictions <- function(
     stats::window(ts_obj, end = baro_end)
   })
 
-  mfvar_eval <- measure_elapsed({
-    forecast_mfvar(
-      q_train_adj,
-      monthly_train_trimmed,
-      transforms,
-      n_lags,
-      horizon_max,
-      target_vars,
-      seed = 1000L + idx * 10L + extra_months,
-      return_model = FALSE,
-      extract_states = TRUE,
-      return_monthly = TRUE
-    )
-  })
-  mfvar_result <- mfvar_eval$result
-  mfvar_pred <- mfvar_result$predictions |>
-    tidyr::complete(
-      variable = target_vars,
-      step_ahead = horizon_steps,
-      fill = list(prediction = NA_real_)
-    ) |>
-    dplyr::mutate(model = "MF-VAR")
+  mfvar_result <- list(predictions = tibble::tibble(), latent_states = NULL, monthly_forecast = NULL)
+  mfvar_pred <- tibble::tibble()
+  mfvar_elapsed <- 0
+  if (include_model("MF-VAR")) {
+    mfvar_eval <- measure_elapsed({
+      forecast_mfvar(
+        q_train_adj,
+        monthly_train_trimmed,
+        transforms,
+        n_lags,
+        horizon_max,
+        target_vars,
+        seed = 1000L + idx * 10L + extra_months,
+        return_model = FALSE,
+        extract_states = TRUE,
+        return_monthly = TRUE
+      )
+    })
+    mfvar_result <- mfvar_eval$result
+    mfvar_pred <- mfvar_result$predictions |>
+      tidyr::complete(
+        variable = target_vars,
+        step_ahead = horizon_steps,
+        fill = list(prediction = NA_real_)
+      ) |>
+      dplyr::mutate(model = "MF-VAR")
+    mfvar_elapsed <- mfvar_eval$elapsed
+  }
   latent_states_fold <- mfvar_result$latent_states
   months_observed <- max(0L, min(extra_months, months_per_quarter))
 
-  if (months_observed > 0L && !is.null(latent_states_fold) && nrow(latent_states_fold)) {
+  if (months_observed > 0L && !is.null(latent_states_fold) && nrow(latent_states_fold) && nrow(mfvar_pred)) {
     latent_states_long <- latent_states_fold |>
       tidyr::pivot_longer(-date, names_to = "variable", values_to = "value") |>
       dplyr::filter(!is.na(.data$value))
@@ -455,6 +583,24 @@ assemble_extra_month_predictions <- function(
     }
   }
 
+  mfvar_manual_pred <- tibble::tibble()
+  mfvar_manual_elapsed <- 0
+  if (include_model(mfvar_manual_label)) {
+    manual_eval <- measure_elapsed({
+      forecast_mfvar_manual(
+        data_dir = data_dir,
+        cutoff_quarter = cutoff_quarter,
+        extra_months = extra_months,
+        horizon_quarters = horizon_max,
+        target_vars = target_vars,
+        mfvar2_opts = mfvar2_opts,
+        seed = 2000L + idx * 10L + extra_months
+      )
+    })
+    mfvar_manual_pred <- manual_eval$result
+    mfvar_manual_elapsed <- manual_eval$elapsed
+  }
+
   fill_value <- if (length(x_train_full)) utils::tail(x_train_full, 1) else 0
   x_future_vec <- rep(fill_value, horizon_months)
   observed_months <- min(extra_months, length(x_future_actual_vec))
@@ -463,81 +609,96 @@ assemble_extra_month_predictions <- function(
   }
   x_future_ts <- stats::ts(x_future_vec, start = future_start, frequency = 12)
 
-  midas_trend_eval <- run_forecaster_with_timing(
-    target_vars = target_vars,
-    horizon_steps = horizon_steps,
-    model_label = "MIDAS (trend)",
-    generator_fn = function(var) {
-      forecast_midas_series(
-        y_series = y_ts_list[[var]],
-        train_rows = train_rows,
-        x_train_full = x_train_full,
-        x_future_full = x_future_ts,
-        horizon = horizon_max,
-        include_trend = TRUE
-      )
-    },
-    warn_context = warn_suffix
-  )
+  midas_trend_eval <- list(predictions = tibble::tibble(), elapsed = 0)
+  if (include_model("MIDAS (trend)")) {
+    midas_trend_eval <- run_forecaster_with_timing(
+      target_vars = target_vars,
+      horizon_steps = horizon_steps,
+      model_label = "MIDAS (trend)",
+      generator_fn = function(var) {
+        forecast_midas_series(
+          y_series = y_ts_list[[var]],
+          train_rows = train_rows,
+          x_train_full = x_train_full,
+          x_future_full = x_future_ts,
+          horizon = horizon_max,
+          include_trend = TRUE
+        )
+      },
+      warn_context = warn_suffix
+    )
+  }
 
-  midas_simple_eval <- run_forecaster_with_timing(
-    target_vars = target_vars,
-    horizon_steps = horizon_steps,
-    model_label = "MIDAS",
-    generator_fn = function(var) {
-      forecast_midas_series(
-        y_series = y_ts_list[[var]],
-        train_rows = train_rows,
-        x_train_full = x_train_full,
-        x_future_full = x_future_ts,
-        horizon = horizon_max,
-        include_trend = FALSE
-      )
-    },
-    warn_context = warn_suffix
-  )
+  midas_simple_eval <- list(predictions = tibble::tibble(), elapsed = 0)
+  if (include_model("MIDAS")) {
+    midas_simple_eval <- run_forecaster_with_timing(
+      target_vars = target_vars,
+      horizon_steps = horizon_steps,
+      model_label = "MIDAS",
+      generator_fn = function(var) {
+        forecast_midas_series(
+          y_series = y_ts_list[[var]],
+          train_rows = train_rows,
+          x_train_full = x_train_full,
+          x_future_full = x_future_ts,
+          horizon = horizon_max,
+          include_trend = FALSE
+        )
+      },
+      warn_context = warn_suffix
+    )
+  }
 
-  midas_latent_trend_eval <- run_forecaster_with_timing(
-    target_vars = target_vars,
-    horizon_steps = horizon_steps,
-    model_label = "MIDAS-Latent (trend)",
-    generator_fn = function(var) {
-      forecast_midas_latent(
-        y_series = y_ts_list[[var]],
-        train_rows = train_rows,
-        latent_states_df = latent_states_fold,
-        variable_name = var,
-        horizon = horizon_max,
-        include_trend = TRUE
-      )
-    },
-    warn_context = warn_suffix
-  )
+  midas_latent_trend_eval <- list(predictions = tibble::tibble(), elapsed = 0)
+  if (include_model("MIDAS-Latent (trend)")) {
+    midas_latent_trend_eval <- run_forecaster_with_timing(
+      target_vars = target_vars,
+      horizon_steps = horizon_steps,
+      model_label = "MIDAS-Latent (trend)",
+      generator_fn = function(var) {
+        forecast_midas_latent(
+          y_series = y_ts_list[[var]],
+          train_rows = train_rows,
+          latent_states_df = latent_states_fold,
+          variable_name = var,
+          horizon = horizon_max,
+          include_trend = TRUE
+        )
+      },
+      warn_context = warn_suffix
+    )
+  }
 
-  midas_latent_simple_eval <- run_forecaster_with_timing(
-    target_vars = target_vars,
-    horizon_steps = horizon_steps,
-    model_label = "MIDAS-Latent",
-    generator_fn = function(var) {
-      forecast_midas_latent(
-        y_series = y_ts_list[[var]],
-        train_rows = train_rows,
-        latent_states_df = latent_states_fold,
-        variable_name = var,
-        horizon = horizon_max,
-        include_trend = FALSE
-      )
-    },
-    warn_context = warn_suffix
-  )
+  midas_latent_simple_eval <- list(predictions = tibble::tibble(), elapsed = 0)
+  if (include_model("MIDAS-Latent")) {
+    midas_latent_simple_eval <- run_forecaster_with_timing(
+      target_vars = target_vars,
+      horizon_steps = horizon_steps,
+      model_label = "MIDAS-Latent",
+      generator_fn = function(var) {
+        forecast_midas_latent(
+          y_series = y_ts_list[[var]],
+          train_rows = train_rows,
+          latent_states_df = latent_states_fold,
+          variable_name = var,
+          horizon = horizon_max,
+          include_trend = FALSE
+        )
+      },
+      warn_context = warn_suffix
+    )
+  }
+
+  ar_predictions <- if (include_model("AR(2)")) ar_base else tibble::tibble()
 
   combined_predictions <- dplyr::bind_rows(
-    mfvar_pred,
-    midas_trend_eval$predictions,
-    midas_simple_eval$predictions,
-    midas_latent_trend_eval$predictions,
-    midas_latent_simple_eval$predictions,
-    ar_base
+    if (nrow(mfvar_pred)) mfvar_pred else NULL,
+    if (nrow(mfvar_manual_pred)) mfvar_manual_pred else NULL,
+    if (nrow(midas_trend_eval$predictions)) midas_trend_eval$predictions else NULL,
+    if (nrow(midas_simple_eval$predictions)) midas_simple_eval$predictions else NULL,
+    if (nrow(midas_latent_trend_eval$predictions)) midas_latent_trend_eval$predictions else NULL,
+    if (nrow(midas_latent_simple_eval$predictions)) midas_latent_simple_eval$predictions else NULL,
+    if (nrow(ar_predictions)) ar_predictions else NULL
   ) |>
     dplyr::mutate(
       extra_months = extra_months,
@@ -551,7 +712,8 @@ assemble_extra_month_predictions <- function(
   list(
     predictions = combined_predictions,
     timings = list(
-      mfvar = mfvar_eval$elapsed,
+      mfvar = mfvar_elapsed,
+      mfvar_manual = mfvar_manual_elapsed,
       midas_kof = midas_trend_eval$elapsed + midas_simple_eval$elapsed,
       midas_latent = midas_latent_trend_eval$elapsed + midas_latent_simple_eval$elapsed
     )

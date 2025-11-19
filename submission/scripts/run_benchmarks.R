@@ -5,7 +5,9 @@ if (!interactive()) {
   file_arg <- grep("^--file=", args_all, value = TRUE)
   if (length(file_arg)) {
     script_path <- normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE)
-    setwd(dirname(script_path))
+    script_dir <- dirname(script_path)
+    project_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
+    setwd(project_root)
   }
 }
 
@@ -44,11 +46,75 @@ if (skip_cv) {
 }
 message(sprintf("→ Early monthly data handling strategy: %s", early_strategy))
 
+manual_model_label <- "MF-VAR (manual)"
+merge_existing <- "--merge-existing" %in% cli_args
+models_arg <- cli_args[grepl("^--models=", cli_args)]
+model_aliases <- c(
+  "mfvar" = "MF-VAR",
+  "mf-var" = "MF-VAR",
+  "mfvar_package" = "MF-VAR",
+  "midas" = "MIDAS",
+  "midas-trend" = "MIDAS (trend)",
+  "midas_trend" = "MIDAS (trend)",
+  "midas-latent" = "MIDAS-Latent",
+  "midas_latent" = "MIDAS-Latent",
+  "midas-latent-trend" = "MIDAS-Latent (trend)",
+  "midas_latent_trend" = "MIDAS-Latent (trend)",
+  "ar" = "AR(2)",
+  "ar2" = "AR(2)",
+  "manual" = manual_model_label,
+  "mfvar2" = manual_model_label,
+  "mfvar-manual" = manual_model_label,
+  "mfvar_manual" = manual_model_label
+)
+default_models <- c("MF-VAR", "MIDAS (trend)", "MIDAS", "MIDAS-Latent (trend)", "MIDAS-Latent", "AR(2)")
+
+resolve_models <- function(alias_vec) {
+  if (!length(alias_vec)) return(default_models)
+  tokens <- unique(trimws(unlist(strsplit(alias_vec, ","))))
+  tokens <- tokens[nzchar(tokens)]
+  if (!length(tokens)) return(default_models)
+  tokens_lower <- tolower(tokens)
+  if (any(tokens_lower == "all")) {
+    tokens_lower <- unique(c(setdiff(tokens_lower, "all"), names(model_aliases)))
+  }
+  mapped <- model_aliases[tokens_lower]
+  if (anyNA(mapped)) {
+    bad <- tokens[is.na(mapped)]
+    stop(sprintf("Unknown model alias(es): %s", paste(bad, collapse = ", ")))
+  }
+  unique(unname(mapped))
+}
+
+models_to_run <- if (length(models_arg)) resolve_models(sub("^--models=", "", models_arg[1])) else default_models
+if (!length(models_to_run)) {
+  stop("No valid models selected after parsing --models argument.")
+}
+message(sprintf("→ Models selected: %s", paste(models_to_run, collapse = ", ")))
+if (merge_existing) {
+  message("→ Existing CV outputs will be merged (others preserved).")
+}
+
+format_timing_totals <- function(totals) {
+  label_map <- c(
+    mfvar_seconds = "MF-VAR",
+    mfvar_manual_seconds = manual_model_label,
+    midas_seconds = "MIDAS",
+    midas_latent_seconds = "MIDAS-Latent",
+    ar_seconds = "AR(2)",
+    total_seconds = "Total"
+  )
+  available <- intersect(names(label_map), names(totals))
+  if (!length(available)) return("")
+  paste(sprintf("%s %.2f", label_map[available], totals[available]), collapse = " | ")
+}
+
 source(file.path("R", "setup.R"))
 source(file.path("R", "data_processing.R"))
 source(file.path("R", "plotting.R"))
 source(file.path("R", "evaluation.R"))
 source(file.path("R", "latent_states.R"))
+source(file.path("R", "mfvar2_adapter.R"))
 source(file.path("R", "benchmark_shared.R"))
 source(file.path("R", "benchmark_cv.R"))
 
@@ -83,9 +149,13 @@ stage_status <- local({
 stage_status("Project setup", "start")
 activate_project()
 
-all_pkgs <- unique(c(required_pkgs, "midasr", "forecast", "purrr", "future", "future.apply"))
+all_pkgs <- unique(c(required_pkgs, "midasr", "forecast", "purrr", "future", "future.apply", "pkgload"))
 load_required_packages(all_pkgs)
 stage_status(status = "done")
+
+if (manual_model_label %in% models_to_run && !requireNamespace("mfvar2", quietly = TRUE)) {
+  pkgload::load_all(file.path("models", "mfvar2"), export_all = FALSE, quiet = TRUE)
+}
 
 DATA_DIR <- file.path(".", "data")
 OUT_DIR <- file.path(".", "output", "benchmarks")
@@ -98,6 +168,21 @@ if (!dir.exists(OUT_PLOTS_DIR)) dir.create(OUT_PLOTS_DIR, recursive = TRUE)
 forecast_steps <- c(1L, 4L)
 history_quarters <- 4L
 n_lags <- 5
+
+mfvar2_cv_config <- list(
+  p = 2L,
+  n_draws = if (fast_mode) 800L else 2000L,
+  burnin = if (fast_mode) 250L else 700L,
+  n_sim = if (fast_mode) 250L else 600L,
+  hyperparameters = list(
+    lambda1 = 0.2,
+    lambda2 = 1.0,
+    lambda3 = 1.0,
+    lambda4 = 1.0,
+    lambda5 = 1.0
+  ),
+  verbose = FALSE
+)
 
 quarter_start_month <- function(q) {
   q_date <- zoo::as.Date(q, frac = 0)
@@ -266,9 +351,12 @@ if (run_cv) {
     target_vars = target_vars,
     forecast_steps = forecast_steps,
     n_lags = n_lags,
+    data_dir = DATA_DIR,
     extra_months_options = cv_extra_months,
     max_folds = cv_max_folds,
     initial_train_quarter = cv_initial_quarter,
+    models_to_run = models_to_run,
+    mfvar2_opts = mfvar2_cv_config,
     progress = !fast_mode
   )
 
@@ -288,14 +376,10 @@ if (run_cv) {
     ))
     timing_totals <- cv_output$timings$totals
     if (length(timing_totals)) {
-      message(sprintf(
-        "  • CV time (sec): MF-VAR %.2f | MIDAS %.2f | MIDAS-Latent %.2f | AR %.2f | Total %.2f",
-        timing_totals["mfvar_seconds"],
-        timing_totals["midas_seconds"],
-        timing_totals["midas_latent_seconds"],
-        timing_totals["ar_seconds"],
-        timing_totals["total_seconds"]
-      ))
+      timing_msg <- format_timing_totals(timing_totals)
+      if (nzchar(timing_msg)) {
+        message(sprintf("  • CV time (sec): %s", timing_msg))
+      }
     }
   }
 } else {
@@ -344,6 +428,49 @@ cv_timings <- cv_output$timings
 cv_timings_tbl <- if (!is.null(cv_timings$per_fold)) cv_timings$per_fold else tibble::tibble()
 cv_timing_totals <- if (!is.null(cv_timings$totals)) cv_timings$totals else numeric()
 
+if (merge_existing) {
+  existing_preds_path <- file.path(OUT_CSV_DIR, "model_benchmark_cv_predictions.csv")
+  if (file.exists(existing_preds_path)) {
+    existing_preds_raw <- readr::read_csv(existing_preds_path, show_col_types = FALSE) |>
+      dplyr::filter(!model %in% models_to_run) |>
+      dplyr::transmute(
+        extra_months = extra_months,
+        fold_index = fold,
+        cutoff_quarter = cutoff_quarter,
+        forecast_quarter = forecast_quarter,
+        variable = variable,
+        step_ahead = step_ahead,
+        prediction = prediction,
+        model = model,
+        quarter_end = as.Date(quarter_end),
+        horizon = horizon,
+        actual = actual,
+        error = error
+      )
+    cv_results <- dplyr::bind_rows(existing_preds_raw, cv_results)
+  } else {
+    warning("merge-existing requested but no prior CV predictions found; proceeding with new models only.", call. = FALSE)
+  }
+}
+
+if (nrow(cv_results)) {
+  filtered_results <- cv_results |>
+    dplyr::filter(.data$step_ahead %in% forecast_steps)
+
+  cv_metrics_tbl <- filtered_results |>
+    dplyr::group_by(extra_months, variable, model, horizon) |>
+    summarise_metrics() |>
+    dplyr::arrange(extra_months, variable, model, horizon)
+
+  cv_metrics_overall <- filtered_results |>
+    dplyr::group_by(extra_months, variable, model) |>
+    summarise_metrics() |>
+    dplyr::arrange(extra_months, variable, model)
+} else {
+  cv_metrics_tbl <- tibble::tibble()
+  cv_metrics_overall <- tibble::tibble()
+}
+
 # --- Output summaries and plots --------------------------------------------
 stage_status("Output generation", "start")
 output_time <- system.time({
@@ -364,27 +491,65 @@ output_time <- system.time({
   }
 
   summary_path <- file.path(OUT_DIR, "model_benchmark_summary.md")
-  cv_summary_lines <- table_to_markdown(summary_cv_tbl, c("Monthly data", "Variable", "Model", "Horizon", "Observations", "RMSE", "MAE"))
-  if (!length(cv_summary_lines)) {
-    if (!run_cv) {
-      cv_summary_lines <- "Cross-validation skipped (--fast/--no-cv)."
-    } else {
-      cv_summary_lines <- "No cross-validation results (insufficient data)."
-    }
+  format_var_heading <- function(var_code) {
+    switch(
+      var_code,
+      "gdp_growth" = "GDP Growth",
+      "inflation" = "Inflation",
+      "exch_rate" = "CHF/EUR Exchange Rate",
+      var_code
+    )
   }
+
+  build_section_lines <- function(var_code, tbl) {
+    tbl_var <- tbl |> dplyr::filter(Variable == var_code)
+    if (!nrow(tbl_var)) return(character())
+    heading <- c(sprintf("### %s", format_var_heading(var_code)), "")
+    coverage_levels <- unique(tbl_var$`Monthly data`)
+    coverage_sections <- unlist(lapply(coverage_levels, function(cov_label) {
+      cov_tbl <- tbl_var |>
+        dplyr::filter(`Monthly data` == cov_label) |>
+        dplyr::mutate(Horizon = .data$horizon) |>
+        dplyr::select(
+          Model = model,
+          Horizon,
+          Observations,
+          RMSE,
+          MAE
+        )
+      if (!nrow(cov_tbl)) return(character())
+      c(
+        sprintf("#### Coverage: %s", cov_label),
+        "",
+        table_to_markdown(cov_tbl, c("Model", "Horizon", "Obs", "RMSE", "MAE"))
+      )
+    }))
+    c(heading, coverage_sections, "")
+  }
+
+  if (nrow(summary_cv_tbl)) {
+    variable_sections <- unlist(lapply(unique(summary_cv_tbl$Variable), build_section_lines, tbl = summary_cv_tbl))
+    cv_summary_lines <- variable_sections
+  } else if (!run_cv) {
+    cv_summary_lines <- "Cross-validation skipped (--fast/--no-cv)."
+  } else {
+    cv_summary_lines <- "No cross-validation results (insufficient data)."
+  }
+
   summary_lines <- c(
     "# Cross-Validation Error Summary",
     "",
-    "## Expanding Window CV: RMSE and MAE by Variable, Model, and Monthly Coverage",
+    "## Expanding Window CV: RMSE and MAE by Variable and Coverage",
     "",
     cv_summary_lines
   )
   readr::write_lines(summary_lines, summary_path)
 
-  plot_models <- c("Actual", "MF-VAR", "MIDAS (trend)", "MIDAS", "MIDAS-Latent (trend)", "MIDAS-Latent", "AR(2)")
+  plot_models <- unique(c("Actual", "MF-VAR", manual_model_label, "MIDAS (trend)", "MIDAS", "MIDAS-Latent (trend)", "MIDAS-Latent", "AR(2)"))
   colour_map <- c(
     "Actual" = "#000000",
     "MF-VAR" = "#1b9e77",
+    `MF-VAR (manual)` = "#377eb8",
     "MIDAS (trend)" = "#7570b3",
     "MIDAS" = "#d95f02",
     "MIDAS-Latent (trend)" = "#66a61e",
@@ -394,6 +559,7 @@ output_time <- system.time({
   linetype_map <- c(
     "Actual" = "solid",
     "MF-VAR" = "solid",
+    `MF-VAR (manual)` = "solid",
     "MIDAS (trend)" = "dashed",
     "MIDAS" = "dashed",
     "MIDAS-Latent (trend)" = "dotdash",

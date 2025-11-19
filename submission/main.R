@@ -19,6 +19,7 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 workflow <- if (length(args) >= 1) args[1] else "mfvar"
+workflow_args <- if (length(args) > 1) args[-1] else character(0)
 
 show_help <- function() {
   cat("
@@ -31,6 +32,11 @@ Available workflows:
   mfvar      - Run Mixed-Frequency VAR estimation and forecasting (default)
                Produces forecasts, evaluation tables, and plots.
                Output: output/mfvar_forecasts_*.csv, mfvar_summary.txt, plots
+
+  mfvar-manual
+             - Run custom mfvar2 sampler on main-branch data
+               Forwards extra flags to scripts/run_mfvar_manual.R
+               Output: output/forecasts/mfvar2/
                
   midas      - Run MIDAS regression estimation and forecasting
                Produces forecasts using mixed-data sampling approach.
@@ -135,6 +141,23 @@ run_mfvar <- function() {
   })
 }
 
+run_mfvar_manual <- function(additional_args = character(0)) {
+  cat("\n=== Running MF-VAR Manual Pipeline (mfvar2) ===\n\n")
+  cat("Executing custom Gibbs sampler via scripts/run_mfvar_manual.R\n")
+  cat("Pass --fast to shorten the run.\n\n")
+
+  rscript <- file.path(R.home("bin"), "Rscript")
+  exit_code <- system2(rscript, args = c("scripts/run_mfvar_manual.R", additional_args))
+
+  if (!is.na(exit_code) && exit_code == 0) {
+    cat("\n✓ mfvar2 manual pipeline completed successfully!\n")
+    cat("Check output/forecasts/mfvar2 for results.\n\n")
+  } else {
+    cat("\n✗ mfvar2 manual pipeline failed (exit code", exit_code, ")\n")
+    quit(save = "no", status = 1)
+  }
+}
+
 run_midas <- function() {
   cat("\n=== Running MIDAS Pipeline ===\n\n")
   cat("Starting MIDAS regression estimation and forecasting...\n")
@@ -187,6 +210,7 @@ run_combined_plots <- function() {
 # Route to appropriate workflow
 switch(tolower(workflow),
   "mfvar" = run_mfvar(),
+  "mfvar-manual" = run_mfvar_manual(workflow_args),
   "midas" = run_midas(),
   "benchmarks" = run_benchmark(),
   "benchmark" = run_benchmark(),  # alias for backwards compatibility

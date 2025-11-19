@@ -57,6 +57,9 @@ run_cv_fold <- function(idx,
                         target_vars,
                         extra_months_options,
                         n_lags,
+                        data_dir,
+                        models_to_run,
+                        mfvar2_opts,
                         progress,
                         position,
                         total_folds) {
@@ -135,6 +138,7 @@ run_cv_fold <- function(idx,
   }
 
   mfvar_elapsed <- 0
+  mfvar_manual_elapsed <- 0
   midas_kof_elapsed <- 0
   midas_latent_elapsed <- 0
 
@@ -158,16 +162,29 @@ run_cv_fold <- function(idx,
       horizon_months = horizon_months,
       idx = idx,
       cutoff_label = cutoff_label,
+      cutoff_quarter = cutoff_quarter,
       forecast_quarters = forecast_quarters,
       quarter_end_dates = quarter_end_dates,
       ar_base = ar_base,
-      train_rows = train_rows
+      train_rows = train_rows,
+      data_dir = data_dir,
+      models_to_run = models_to_run,
+      mfvar2_opts = mfvar2_opts
     )
 
     fold_predictions[[extra_idx]] <- extra_result$predictions
-    mfvar_elapsed <- mfvar_elapsed + extra_result$timings$mfvar
-    midas_kof_elapsed <- midas_kof_elapsed + extra_result$timings$midas_kof
-    midas_latent_elapsed <- midas_latent_elapsed + extra_result$timings$midas_latent
+    if (!is.null(extra_result$timings$mfvar)) {
+      mfvar_elapsed <- mfvar_elapsed + extra_result$timings$mfvar
+    }
+    if (!is.null(extra_result$timings$mfvar_manual)) {
+      mfvar_manual_elapsed <- mfvar_manual_elapsed + extra_result$timings$mfvar_manual
+    }
+    if (!is.null(extra_result$timings$midas_kof)) {
+      midas_kof_elapsed <- midas_kof_elapsed + extra_result$timings$midas_kof
+    }
+    if (!is.null(extra_result$timings$midas_latent)) {
+      midas_latent_elapsed <- midas_latent_elapsed + extra_result$timings$midas_latent
+    }
   }
 
   combined_predictions <- dplyr::bind_rows(fold_predictions)
@@ -181,10 +198,11 @@ run_cv_fold <- function(idx,
     timings = list(
       fold_index = idx,
       mfvar = mfvar_elapsed,
+      mfvar_manual = mfvar_manual_elapsed,
       midas_kof = midas_kof_elapsed,
       midas_latent = midas_latent_elapsed,
       ar = ar_eval$elapsed,
-      total = mfvar_elapsed + midas_kof_elapsed + midas_latent_elapsed + ar_eval$elapsed
+      total = mfvar_elapsed + mfvar_manual_elapsed + midas_kof_elapsed + midas_latent_elapsed + ar_eval$elapsed
     )
   )
 }
@@ -198,6 +216,9 @@ execute_cv_folds <- function(plan,
                              y_ts_list,
                              target_vars,
                              n_lags,
+                             data_dir,
+                             models_to_run,
+                             mfvar2_opts,
                              progress = TRUE) {
   predictions_list <- list()
   actual_list <- list()
@@ -221,6 +242,9 @@ execute_cv_folds <- function(plan,
       target_vars = target_vars,
       extra_months_options = plan$extra_months,
       n_lags = n_lags,
+      data_dir = data_dir,
+      models_to_run = models_to_run,
+      mfvar2_opts = mfvar2_opts,
       progress = progress,
       position = pos,
       total_folds = plan$total_folds
@@ -253,6 +277,7 @@ execute_cv_folds <- function(plan,
       tibble::tibble(
         fold_index = tm$fold_index,
         mfvar_seconds = tm$mfvar,
+        mfvar_manual_seconds = tm$mfvar_manual,
         midas_seconds = tm$midas_kof,
         midas_latent_seconds = tm$midas_latent,
         ar_seconds = tm$ar,
@@ -330,9 +355,12 @@ run_benchmark_cross_validation <- function(
     target_vars,
     forecast_steps,
     n_lags,
+    data_dir,
     extra_months_options = 0:2,
     max_folds = Inf,
     initial_train_quarter = zoo::as.yearqtr("2015 Q4"),
+    models_to_run = c("MF-VAR", "MIDAS (trend)", "MIDAS", "MIDAS-Latent (trend)", "MIDAS-Latent", "AR(2)"),
+    mfvar2_opts = list(),
     progress = TRUE) {
   plan <- prepare_cv_plan(
     qdat_adj = qdat_adj,
@@ -367,6 +395,9 @@ run_benchmark_cross_validation <- function(
     y_ts_list = y_ts_list,
     target_vars = target_vars,
     n_lags = n_lags,
+    data_dir = data_dir,
+    models_to_run = models_to_run,
+    mfvar2_opts = mfvar2_opts,
     progress = progress
   )
 

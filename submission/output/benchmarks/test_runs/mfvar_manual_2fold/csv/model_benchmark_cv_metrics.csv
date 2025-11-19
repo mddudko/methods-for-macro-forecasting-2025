@@ -1,0 +1,13 @@
+extra_months,variable,monthly_coverage,model,horizon,rmse,mae,observations
+0,exch_rate,Cutoff only,MF-VAR (manual),1-step ahead,0.9941596238084518,0.9938776327360774,2
+0,exch_rate,Cutoff only,MF-VAR (manual),1-year ahead,0.9969278365024385,0.9967939591916437,2
+0,gdp_growth,Cutoff only,MF-VAR (manual),1-step ahead,2.229377134519063,1.9869998038334447,2
+0,gdp_growth,Cutoff only,MF-VAR (manual),1-year ahead,1.77240983341692,1.6429063161567836,2
+0,inflation,Cutoff only,MF-VAR (manual),1-step ahead,1.1130879447324953,0.9235300480241901,2
+0,inflation,Cutoff only,MF-VAR (manual),1-year ahead,1.2150536005941421,1.2150350513072832,2
+1,exch_rate,Cutoff +1m,MF-VAR (manual),1-step ahead,1.0021235490350457,1.0018540821456856,2
+1,exch_rate,Cutoff +1m,MF-VAR (manual),1-year ahead,1.0048275812785985,1.0046219930102893,2
+1,gdp_growth,Cutoff +1m,MF-VAR (manual),1-step ahead,4.267032340554705,3.3451166047693297,2
+1,gdp_growth,Cutoff +1m,MF-VAR (manual),1-year ahead,3.9187909468537874,3.4496088084518375,2
+1,inflation,Cutoff +1m,MF-VAR (manual),1-step ahead,1.1642145598662137,0.8482587331334042,2
+1,inflation,Cutoff +1m,MF-VAR (manual),1-year ahead,1.6571487185705487,1.6205878050813822,2
