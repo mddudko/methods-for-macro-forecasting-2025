@@ -1,5 +1,17 @@
 # Latent state extraction utilities for MF-VAR models
 
+state_label_map <- c(
+  plkopr = "CPI (index, 2020 = 100)",
+  devkum = "FX turnover (CHF/EUR)",
+  amarbma = "Registered unemployment",
+  snboffzisa = "SNB policy rate",
+  smi_monthly_return = "SMI monthly return",
+  smi_monthly_avg = "SMI level (monthly average)",
+  gdp_growth = "GDP Growth (%, detrended)",
+  inflation = "Inflation (%, detrended)",
+  exch_rate = "Exchange Rate (log CHF/EUR, detrended)"
+)
+
 extract_latent_states <- function(model, summary = c("mean", "median")) {
   if (missing(model) || is.null(model)) {
     stop("'model' must be a fitted mfbvar object returned by estimate_mfvar_model().")
@@ -107,11 +119,7 @@ prepare_latent_actual_plot_data <- function(states_df,
     tidyr::pivot_longer(-date, names_to = "variable", values_to = "value") |>
     dplyr::mutate(type = "Latent State (MF-VAR)")
 
-  label_map <- c(
-    gdp_growth = "GDP Growth (%, detrended)",
-    inflation = "Inflation (%, detrended)",
-    exch_rate = "Exchange Rate (log CHF/EUR, detrended)"
-  )
+  label_map <- state_label_map
 
   list(
     actuals_long = actuals_long,
@@ -139,12 +147,15 @@ plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("face
 
   states_long <- states_df |>
     dplyr::select(date, tidyselect::all_of(states)) |>
-    tidyr::pivot_longer(-date, names_to = "state", values_to = "value")
+    tidyr::pivot_longer(-date, names_to = "state", values_to = "value") |>
+    dplyr::mutate(
+      state_label = dplyr::recode(.data$state, !!!state_label_map, .default = .data$state)
+    )
 
   if (identical(mode, "facet")) {
     p <- ggplot2::ggplot(states_long, ggplot2::aes(x = date, y = value)) +
       ggplot2::geom_line(color = "#1b9e77") +
-      ggplot2::facet_wrap(~ state, scales = "free_y", ncol = 2) +
+      ggplot2::facet_wrap(~ state_label, scales = "free_y", ncol = 2) +
       ggplot2::labs(
         title = "MF-VAR latent states (posterior mean)",
         x = "Date",
@@ -155,7 +166,7 @@ plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("face
     default_name <- "mfvar_latent_states_timeseries.png"
   } else {
     states_heatmap <- states_long |>
-      dplyr::group_by(state) |>
+      dplyr::group_by(state_label) |>
       dplyr::mutate(
         value_mean = mean(value, na.rm = TRUE),
         value_sd = stats::sd(value, na.rm = TRUE),
@@ -164,7 +175,7 @@ plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("face
       dplyr::ungroup() |>
       dplyr::select(-value_mean, -value_sd)
 
-    p <- ggplot2::ggplot(states_heatmap, ggplot2::aes(x = date, y = state, fill = value)) +
+    p <- ggplot2::ggplot(states_heatmap, ggplot2::aes(x = date, y = state_label, fill = value)) +
       ggplot2::geom_tile() +
       ggplot2::scale_fill_viridis_c(option = "C") +
       ggplot2::labs(
