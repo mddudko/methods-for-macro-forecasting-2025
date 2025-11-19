@@ -40,11 +40,11 @@ mfvar_path <- file.path(MFVAR_DIR, "csv", "mfvar_forecasts_full.csv")
 midas_path <- file.path(MIDAS_DIR, "csv", "midas_forecasts_full.csv")
 
 if (!file.exists(mfvar_path)) {
-  stop("MF-VAR forecasts not found. Run: Rscript run_mfvar_package.R")
+  stop("MF-VAR forecasts not found. Run: Rscript scripts/run_mfvar_package.R")
 }
 
 if (!file.exists(midas_path)) {
-  stop("MIDAS forecasts not found. Run: Rscript run_midas.R")
+  stop("MIDAS forecasts not found. Run: Rscript scripts/run_midas.R")
 }
 
 # Load full forecasts to get all quarters (not just targets)
@@ -138,7 +138,7 @@ message("Estimating MIDAS-Latent overlays...")
 
 latent_states_path <- file.path(MFVAR_DIR, "csv", "mfvar_latent_states.csv")
 if (!file.exists(latent_states_path)) {
-  stop("MF-VAR latent states not found. Run: Rscript run_mfvar_package.R")
+  stop("MF-VAR latent states not found. Run: Rscript scripts/run_mfvar_package.R")
 }
 
 latent_states_raw <- readr::read_csv(latent_states_path, show_col_types = FALSE) |>
@@ -151,7 +151,7 @@ if (any(is.na(match_idx))) {
   example_dates <- paste(head(missing_dates, 3), collapse = ", ")
   stop(
     sprintf(
-      "Latent states file is missing %d required months (examples: %s). Re-run run_mfvar_package.R to refresh latent states.",
+      "Latent states file is missing %d required months (examples: %s). Re-run scripts/run_mfvar_package.R to refresh latent states.",
       length(missing_dates),
       example_dates
     )

@@ -27,7 +27,7 @@ cat("=== Lambda Sensitivity Analysis ===\n")
 cat(sprintf("Testing lambda1 values: %s\n", paste(lambda_values, collapse = ", ")))
 cat("Evaluation: Holdout (last 4 quarters)\n\n")
 
-# Load data using exact same pattern as run_mfvar_package.R
+# Load data using exact same pattern as scripts/run_mfvar_package.R
 cat("Loading data...\n")
 DATA_DIR <- file.path(".", "data")
 qdat_raw <- read_quarterly_data(DATA_DIR)

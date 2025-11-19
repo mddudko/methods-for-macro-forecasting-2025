@@ -13,4 +13,4 @@ Error covariance matrix: Inverse Wishart
 NULL
 
 ==== Note ====
-For model evaluation and benchmarking, see run_benchmarks.R
+For model evaluation and benchmarking, see scripts/run_benchmarks.R

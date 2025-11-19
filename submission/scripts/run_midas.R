@@ -353,7 +353,7 @@ for (var in target_vars) {
 }
 
 cat("\n==== Note ====\n")
-cat("For model evaluation and benchmarking, see run_benchmarks.R\n")
+cat("For model evaluation and benchmarking, see scripts/run_benchmarks.R\n")
 
 sink()
 

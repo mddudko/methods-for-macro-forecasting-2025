@@ -39,7 +39,7 @@ Automatically generated when running:
 ```bash
 Rscript main.R mfvar
 # or
-Rscript run_mfvar_package.R
+Rscript scripts/run_mfvar_package.R
 ```
 
 The plot is created alongside existing latent states visualizations:

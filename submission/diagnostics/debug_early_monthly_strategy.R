@@ -119,7 +119,7 @@ for (name in names(monthly_list_fill)) {
 
 message("\n=== Seed check ===")
 message("Checking if seeds are hardcoded in estimation functions...")
-seed_files <- c("R/setup.R", "R/evaluation.R", "R/benchmark_shared.R", "run_benchmarks.R")
+seed_files <- c("R/setup.R", "R/evaluation.R", "R/benchmark_shared.R", "scripts/run_benchmarks.R")
 for (f in seed_files) {
   if (file.exists(f)) {
     lines <- readLines(f)

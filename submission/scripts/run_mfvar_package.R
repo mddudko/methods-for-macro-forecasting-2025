@@ -99,7 +99,7 @@ if (identical(Sys.getenv("MFVAR_VERSION"), "manual")) {
   stop(
     paste(
       "Manual MF-VAR specification not yet implemented on main branch.",
-      "See placeholder 'run_mfvar_manual.R' or the dedicated feature branch."
+      "See placeholder 'scripts/run_mfvar_manual.R' or the dedicated feature branch."
     )
   )
 }
@@ -308,7 +308,7 @@ sink(summary_path)
 cat("\n==== MF-VAR summary (Minnesota prior, IW covariance) ====\n\n")
 print(summary(mod_ss))
 cat("\n==== Note ====\n")
-cat("For model evaluation and benchmarking, see run_benchmarks.R\n")
+cat("For model evaluation and benchmarking, see scripts/run_benchmarks.R\n")
 sink()
 
 # --- Plots ------------------------------------------------------------------

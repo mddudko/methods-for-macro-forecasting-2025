@@ -52,10 +52,12 @@ See [`AUTHORS.yml`](AUTHORS.yml) for contributor information.
 ├── renv/                       # R package management
 │
 ├── main.R                     # Entry point - unified workflow interface
-├── run_mfvar_package.R        # MF-VAR workflow script
-├── run_midas.R                # MIDAS workflow script
-├── run_combined_plots.R       # Multi-model comparison visualization
-├── run_benchmarks.R           # Benchmark comparison across all models
+├── scripts/                   # Standalone workflow scripts (CLI-friendly)
+│   ├── run_mfvar_package.R    # MF-VAR workflow script
+│   ├── run_midas.R            # MIDAS workflow script
+│   ├── run_combined_plots.R   # Multi-model comparison visualization
+│   ├── run_benchmarks.R       # Benchmark comparison across all models
+│   └── run_cv_20folds.R       # Helper to force 20-fold CV
 └── README.md                  # This file
 ```
 
@@ -143,13 +145,13 @@ Evaluation framework:
 #### Option 4: Combined Forecast Plots
 
 ```bash
-Rscript run_combined_plots.R
+Rscript scripts/run_combined_plots.R
 ```
 
 Generates multi-model comparison visualizations:
 - Overlays all 6 forecast series (MF-VAR, MIDAS-KOF trend/simple, MIDAS-Latent trend/simple, AR(2))
 - Shows 1-year (4 quarters) of historical context
-- Requires prior runs of `run_mfvar_package.R` and `run_midas.R`
+- Requires prior runs of `scripts/run_mfvar_package.R` and `scripts/run_midas.R`
 
 **Outputs:**
 - `output/forecasts/combined/plots/combined_forecast_*.png` - Multi-model comparison plots

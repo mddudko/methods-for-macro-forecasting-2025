@@ -125,7 +125,7 @@ run_mfvar <- function() {
   cat("This may take several minutes.\n\n")
   
   tryCatch({
-    source("run_mfvar_package.R", local = new.env())
+    source("scripts/run_mfvar_package.R", local = new.env())
     cat("\n✓ MF-VAR pipeline completed successfully!\n")
     cat("Check output/ directory for results.\n\n")
   }, error = function(e) {
@@ -141,7 +141,7 @@ run_midas <- function() {
   cat("This may take several minutes.\n\n")
   
   tryCatch({
-    source("run_midas.R", local = new.env())
+    source("scripts/run_midas.R", local = new.env())
     cat("\n✓ MIDAS pipeline completed successfully!\n")
     cat("Check output/ directory for results.\n\n")
   }, error = function(e) {
@@ -158,7 +158,7 @@ run_benchmark <- function() {
   cat("This may take several minutes.\n\n")
   
   tryCatch({
-    source("run_benchmarks.R", local = new.env())
+    source("scripts/run_benchmarks.R", local = new.env())
     cat("\n✓ Benchmark comparison completed successfully!\n")
     cat("Check output/ directory for results.\n\n")
   }, error = function(e) {
@@ -174,7 +174,7 @@ run_combined_plots <- function() {
   cat("This requires MF-VAR and MIDAS forecasts to exist.\n\n")
   
   tryCatch({
-    source("run_combined_plots.R", local = new.env())
+    source("scripts/run_combined_plots.R", local = new.env())
     cat("\n✓ Combined plots completed successfully!\n")
     cat("Check output/forecasts/combined/ directory for results.\n\n")
   }, error = function(e) {
