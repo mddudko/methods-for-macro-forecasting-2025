@@ -129,7 +129,14 @@ prepare_latent_actual_plot_data <- function(states_df,
   )
 }
 
-plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("facet", "heatmap"), filename = NULL) {
+plot_latent_states <- function(states_df,
+                               out_dir,
+                               states = NULL,
+                               mode = c("facet", "heatmap"),
+                               filename = NULL,
+                               width = 8,
+                               height = NULL,
+                               dpi = 150) {
   if (!"date" %in% names(states_df)) {
     stop("states_df must contain a 'date' column for plotting.")
   }
@@ -198,7 +205,10 @@ plot_latent_states <- function(states_df, out_dir, states = NULL, mode = c("face
   }
 
   plot_path <- file.path(out_dir, filename)
-  ggplot2::ggsave(plot_path, plot = p, width = 8, height = if (identical(mode, "facet")) 6 else 4.5, dpi = 150)
+  if (is.null(height)) {
+    height <- if (identical(mode, "facet")) 6 else 4.5
+  }
+  ggplot2::ggsave(plot_path, plot = p, width = width, height = height, dpi = dpi)
   plot_path
 }
 
