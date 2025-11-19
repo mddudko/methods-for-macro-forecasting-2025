@@ -131,7 +131,7 @@ estimate_mfvar_model <- function(Y, n_lags, n_fcst, seed = 123) {
   
   # Optimal lambda1 from sensitivity analysis: 0.06 minimizes out-of-sample RMSE
   lambda1 <- getOption("mfvar.lambda1", 0.06)  # Optimal: avg RMSE=0.748 (vs 0.801 for 0.08, 0.937 for 0.1)
-  aggregation <- getOption("mfvar.aggregation", "first")  # "average", "first", or "last"
+  aggregation <- getOption("mfvar.aggregation", "average")  # "average" uses all 3 months per quarter
   
   prior_obj <- mfbvar::set_prior(
     Y = Y,
