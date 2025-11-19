@@ -248,7 +248,10 @@ plot_latent_actuals_with_kof <- function(states_df,
                                          out_dir,
                                          target_variables = c("gdp_growth", "inflation", "exch_rate"),
                                          transforms = NULL,
-                                         filename = NULL) {
+                                         filename = NULL,
+                                         ylim = NULL,
+                                         width = 10,
+                                         height = 9) {
   if (is.null(kof_ts) || !inherits(kof_ts, "ts")) {
     stop("kof_ts must be a monthly 'ts' object containing the KOF Barometer.")
   }
@@ -304,17 +307,8 @@ plot_latent_actuals_with_kof <- function(states_df,
   debug_path <- file.path(out_dir, "mfvar_latent_actuals_kof_data.csv")
   readr::write_csv(combined, debug_path)
 
-  actual_points <- combined |>
-    dplyr::filter(.data$type == "Actual (Quarterly)")
-
-  p <- ggplot2::ggplot(combined, ggplot2::aes(x = date, y = value_std, color = type, linetype = type)) +
-    ggplot2::geom_line(linewidth = 0.7) +
-    ggplot2::geom_point(
-      data = actual_points,
-      ggplot2::aes(x = date, y = value_std, color = type),
-      size = 1.8,
-      inherit.aes = FALSE
-    ) +
+  p <- ggplot2::ggplot(combined, ggplot2::aes(x = date, y = value_std, color = type)) +
+    ggplot2::geom_line(linewidth = 0.75) +
     ggplot2::facet_wrap(~ variable_label, ncol = 1, scales = "free_y") +
     ggplot2::scale_color_manual(
       values = c(
@@ -323,20 +317,12 @@ plot_latent_actuals_with_kof <- function(states_df,
         "KOF Barometer (Monthly)" = "#7570b3"
       )
     ) +
-    ggplot2::scale_linetype_manual(
-      values = c(
-        "Actual (Quarterly)" = "solid",
-        "Latent State (MF-VAR)" = "dashed",
-        "KOF Barometer (Monthly)" = "dotdash"
-      )
-    ) +
     ggplot2::labs(
       title = "Latent states, actuals, and KOF Barometer",
       subtitle = "Each series is standardized (z-score) within its variable to highlight co-movement; KOF is monthly",
       x = "Date",
       y = "Standardized value",
-      color = NULL,
-      linetype = NULL
+      color = NULL
     ) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
@@ -345,6 +331,10 @@ plot_latent_actuals_with_kof <- function(states_df,
       strip.text = ggplot2::element_text(face = "bold", size = 10),
       panel.grid.minor = ggplot2::element_blank()
     )
+
+  if (!is.null(ylim)) {
+    p <- p + ggplot2::coord_cartesian(ylim = ylim)
+  }
 
   if (is.null(filename)) {
     filename <- "mfvar_latent_actuals_kof.png"
@@ -355,7 +345,7 @@ plot_latent_actuals_with_kof <- function(states_df,
   }
 
   plot_path <- file.path(out_dir, filename)
-  ggplot2::ggsave(plot_path, plot = p, width = 10, height = 9, dpi = 150)
+  ggplot2::ggsave(plot_path, plot = p, width = width, height = height, dpi = 150)
   message("Saved latent states + actuals + KOF plot: ", plot_path)
   plot_path
 }

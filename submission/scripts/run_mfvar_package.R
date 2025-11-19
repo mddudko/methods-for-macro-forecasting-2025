@@ -165,7 +165,9 @@ latent_states_path <- NULL
 latent_states_plot <- NULL
 latent_heatmap_plot <- NULL
 latent_vs_actual_plot <- NULL
+latent_actuals_plot <- NULL
 latent_actuals_kof_plot <- NULL
+latent_actuals_kof_gdp_plot <- NULL
 latent_states <- NULL
 need_latent_states <- ragged_months_observed > 0L || !identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0")
 if (isTRUE(need_latent_states)) {
@@ -224,6 +226,27 @@ if (!identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0") && !is.null(latent_state
           NULL
         }
       )
+
+      if (!is.null(latent_actuals_kof_plot)) {
+        latent_actuals_kof_gdp_plot <- tryCatch(
+          plot_latent_actuals_with_kof(
+            latent_states,
+            qdat_orig,
+            kof_ts_plot,
+            PLOT_DIR,
+            target_variables = "gdp_growth",
+            transforms = transforms,
+            filename = "mfvar_latent_actuals_kof_gdp.png",
+            ylim = c(-3.5, 3.5),
+            width = 14,
+            height = 6
+          ),
+          error = function(err) {
+            warning(sprintf("Latent/actual/KOF GDP-only plot failed: %s", conditionMessage(err)), call. = FALSE)
+            NULL
+          }
+        )
+      }
     }
 }
 
@@ -483,6 +506,9 @@ if (!is.null(latent_vs_actual_plot)) {
 }
 if (!is.null(latent_actuals_kof_plot)) {
   message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof.png\n")
+}
+if (!is.null(latent_actuals_kof_gdp_plot)) {
+  message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof_gdp.png\n")
 }
 
 message_lines <- c(
