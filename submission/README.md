@@ -9,10 +9,14 @@
 
 This project implements and compares two approaches for forecasting Swiss macroeconomic indicators using mixed-frequency data:
 
-1. **Mixed-Frequency Bayesian VAR (MF-VAR)** - Incorporates monthly indicator data (SMI returns, Inflation data, CHF-EUR exchange rates and Unemployment data) to predict quarterly GDP, inflation, and exchange rate. 
-2. **MIDAS Regression** - Uses stable polynomial distributed lag structures to use monthly data (KOF Barometer, and the Latent State computed by MF-VAR) to predict the quarterly data.
+1. **Mixed-Frequency Bayesian VAR (MF-VAR)** - Two implementations:
+   - **MF-VAR (package)**: Uses `mfbvar` package with SNB monthly indicators (CPI, FX turnover, unemployment, policy rate, SMI returns)
+   - **MF-VAR (manual)**: Custom implementation using `mfvar2` package with alternative specification
+2. **MIDAS Regression** - Uses exponential Almon polynomial distributed lag structures with:
+   - **MIDAS-KOF**: KOF Economic Barometer as monthly indicator
+   - **MIDAS-Latent**: MF-VAR latent states as monthly indicators (extension)
 
-The analysis includes evaluation through expanding window cross-validation, with comprehensive benchmark comparisons against AR(2).
+The analysis includes evaluation through expanding window cross-validation (20 folds, 1992-2025), with comprehensive benchmark comparisons against AR(2).
 
 ## Authors
 
@@ -25,39 +29,59 @@ See [`AUTHORS.yml`](AUTHORS.yml) for contributor information.
 ├── R/                          # Helper modules
 │   ├── setup.R                 # Environment setup and package management
 │   ├── data_processing.R       # Data ingestion and transformation
-│   ├── evaluation.R            # Model evaluation and benchmarking
-│   └── plotting.R              # Visualization functions
+│   ├── evaluation.R            # (Legacy) Model evaluation framework
+│   ├── benchmark_cv.R          # Cross-validation evaluation logic
+│   ├── benchmark_shared.R      # Shared forecasting functions for all models
+│   ├── plotting.R              # Visualization functions
+│   └── latent_states.R         # Latent state extraction and plotting
 │
 ├── data/                       # Data files
-│   ├── data_quarterly.csv      # Main quarterly dataset (GDP, CPI, exchange rate)
-│   ├── metadata_quarterly*.csv # Data provenance and documentation
-│   └── *.csv                   # Raw source data from SNB
+│   ├── processed/
+│   │   ├── data_quarterly.csv      # Main quarterly dataset (GDP, CPI, exchange rate)
+│   │   ├── combined_timeseries.csv # SNB monthly indicators
+│   │   └── metadata_quarterly*.csv # Data provenance and documentation
+│   └── raw_data/               # Raw source data from SNB
 │
-├── output/                     # Generated outputs (gitignored except results)
+├── output/                     # Generated outputs (tracked in git for reproducibility)
 │   ├── forecasts/             # Current forecasts from latest data
-│   │   ├── mfvar/             # MF-VAR results (forecasts, latent states, plots)
+│   │   ├── mfvar/             # MF-VAR (package) results
+│   │   │   ├── csv/           # Forecasts and latent states
+│   │   │   ├── plots/         # Forecast and latent state visualizations
+│   │   │   └── models/        # Saved model objects (.rds)
+│   │   ├── mfvar2/            # MF-VAR (manual) results
 │   │   ├── midas/             # MIDAS results (forecasts, plots)
-│   │   ├── combined/          # Multi-model comparison plots
-│   │   ├── *.png              # Forecast visualizations
-│   │   └── *.rds              # Saved model objects
-│   └── benchmarks/            # Model comparison & evaluation
-│       ├── model_benchmark_*.csv   # Comparison metrics
-│       └── *.png              # Comparison plots
+│   │   └── combined/          # Multi-model comparison plots (.png + .pdf)
+│   ├── benchmarks/            # Model comparison & evaluation
+│   │   ├── csv/               # CV metrics, predictions, timings
+│   │   ├── plots/             # Comparison plots (.png + .pdf for CV errors)
+│   │   ├── test_runs/         # Diagnostic runs
+│   │   └── model_benchmark_summary.{md,html} # Formatted results
+│   └── diagnostics/           # Sensitivity analysis and diagnostics
 │
 ├── docs/                       # Documentation and analysis
-│   ├── mfvar_walkthrough.*     # Tutorial notebook
-│   ├── presentation*.qmd       # Presentation slides
-│   └── midas/                  # MIDAS model exploration
+│   ├── notebooks/
+│   │   ├── mfvar_walkthrough.* # Tutorial notebook
+│   │   └── midas/              # MIDAS model exploration
+│   ├── presentation_V2.*       # Presentation slides (current)
+│   └── old/                    # Archived presentations
+│
+├── models/                     # Custom package implementations
+│   └── mfvar2/                 # Manual MF-VAR implementation
+│
+├── diagnostics/                # Experimental diagnostics and tests
 │
 ├── renv/                       # R package management
 │
 ├── main.R                     # Entry point - unified workflow interface
 ├── scripts/                   # Standalone workflow scripts (CLI-friendly)
-│   ├── run_mfvar_package.R    # MF-VAR workflow script
+│   ├── run_mfvar_package.R    # MF-VAR (package) workflow script
+│   ├── run_mfvar_manual.R     # MF-VAR (manual) workflow script
+│   ├── run_mfvar_manual_cv.R  # MF-VAR (manual) CV workflow
 │   ├── run_midas.R            # MIDAS workflow script
 │   ├── run_combined_plots.R   # Multi-model comparison visualization
 │   ├── run_benchmarks.R       # Benchmark comparison across all models
-│   └── run_cv_20folds.R       # Helper to force 20-fold CV
+│   ├── run_cv_20folds.R       # Helper to force 20-fold CV
+│   └── merge_cv_results.R     # Utility to combine CV run results
 └── README.md                  # This file
 ```
 
@@ -98,8 +122,9 @@ This runs the complete MF-VAR workflow:
 - `output/forecasts/mfvar/csv/mfvar_forecasts_targets.csv` - 1-step and 1-year ahead only
 - `output/forecasts/mfvar/csv/mfvar_latent_states.csv` - Extracted latent states (extension)
 - `output/forecasts/mfvar/mfvar_summary.txt` - Model diagnostics and evaluation
-- `output/forecasts/mfvar/plots/forecast_*.png` - Forecast visualizations
-- `output/forecasts/mfvar/plots/mfvar_latent_states_*.png` - Latent state visualizations
+- `output/forecasts/mfvar/plots/forecast_*_context.png` - Forecast visualizations with history
+- `output/forecasts/mfvar/plots/mfvar_latent_states_all.png` - All latent states (landscape, 14×6)
+- `output/forecasts/mfvar/plots/mfvar_latent_states_{timeseries,heatmap}.png` - Individual visualizations
 
 #### Option 2: MIDAS Pipeline
 
@@ -138,9 +163,14 @@ Evaluation framework:
 - Per-fold timing breakdowns for performance profiling
 
 **Outputs:**
-- `output/benchmarks/csv/model_benchmark_*.csv` - Detailed metrics
-- `output/benchmarks/model_benchmark_summary.md` - Summary tables
-- `output/benchmarks/plots/model_benchmark_plot_*.png` - Comparison plots
+- `output/benchmarks/csv/model_benchmark_cv_metrics.csv` - CV metrics by model/horizon/extra_months
+- `output/benchmarks/csv/model_benchmark_cv_predictions.csv` - Full CV predictions by fold
+- `output/benchmarks/csv/model_benchmark_cv_timings.csv` - Per-fold runtime breakdowns
+- `output/benchmarks/model_benchmark_summary.{md,html}` - Formatted summary tables
+- `output/benchmarks/plots/model_benchmark_plot_*.png` - Forecast comparison plots
+- `output/benchmarks/plots/cv_errors_by_variable_{rmse,mae}.png` - CV error by variable
+- `output/benchmarks/plots/cv_errors_heatmap_h4_{rmse,mae}.png` - 1-year ahead heatmaps
+- `output/benchmarks/plots/cv_relative_errors_{rmse,mae}.{png,pdf}` - Relative error plots with PDF export
 
 #### Option 4: Combined Forecast Plots
 
@@ -154,7 +184,7 @@ Generates multi-model comparison visualizations:
 - Requires prior runs of `scripts/run_mfvar_package.R` and `scripts/run_midas.R`
 
 **Outputs:**
-- `output/forecasts/combined/plots/combined_forecast_*.png` - Multi-model comparison plots
+- `output/forecasts/combined/combined_*_{png,pdf}` - Multi-model comparison plots (PNG + PDF)
 
 ## Target Variables
 
@@ -169,7 +199,7 @@ Generates multi-model comparison visualizations:
 
 ## Model Specifications
 
-### MF-VAR
+### MF-VAR (package via `mfbvar`)
 - **Lags**: 5 quarters
 - **Prior**: Minnesota with inverse-Wishart covariance
 - **Lambda1**: 0.06 (optimal from sensitivity analysis: avg RMSE=0.748 vs 0.801 for 0.08, 0.937 for 0.1)
@@ -177,25 +207,36 @@ Generates multi-model comparison visualizations:
 - **MCMC**: 10000 draws, 5000 burn-in, no thinning (package defaults)
 - **Monthly indicators**: CPI, FX turnover, unemployment, SNB rate, SMI returns
 
+### MF-VAR (manual via `mfvar2`)
+- **Lags**: 2 quarters
+- **MCMC**: 1200 draws, 400 burn-in
+- **Hyperparameters**: Lambda1=0.2, Lambda2-5=1.0
+- **Monthly indicators**: Same SNB series as package implementation
+- Custom Gibbs sampler with state-space representation
+
 ### Benchmarks
 - **AR(2)**: Autoregressive model (Yule-Walker/OLS/ARIMA fallbacks)
-- **MIDAS-KOF**: Mixed-data sampling with KOF Economic Barometer and exponential Almon lag polynomials
-- **MIDAS-Latent** (Extension): MIDAS using MF-VAR latent states as monthly indicators
-- **RW-trend**: Random walk with linear trend
+- **MIDAS-KOF (trend/simple)**: Mixed-data sampling with KOF Economic Barometer and exponential Almon lag polynomials (with/without deterministic trend)
+- **MIDAS-Latent (trend/simple)** (Extension): MIDAS using MF-VAR latent states as monthly indicators (with/without trend)
 
 ## Data Sources
 
-Quarterly data sourced from Swiss National Bank (SNB):
-- Real GDP growth
-- Consumer Price Index (CPI)
-- Exchange rates (CHF/EUR)
+Quarterly data sourced from Swiss National Bank (SNB) (`data/processed/data_quarterly.csv`):
+- Real GDP growth (`rvgdp`)
+- Consumer Price Index (`cpi`)
+- Exchange rates CHF/EUR (`wkfreuro`)
 
 Monthly indicators:
-- **MF-VAR**: SNB series (CPI, FX turnover, unemployment, policy rate) + Swiss Market Index (SMI) monthly returns from combined timeseries file
+- **MF-VAR**: SNB series from `data/processed/combined_timeseries.csv`:
+  - `plkopr`: Consumer Price Index (monthly, 2020=100)
+  - `devkum`: Foreign exchange turnover (CHF/EUR)
+  - `amarbma`: Registered unemployment
+  - `snboffzisa`: SNB policy rate (3-month Libor target)
+  - `smi_monthly_return`: Swiss Market Index monthly log returns
 - **MIDAS-KOF**: KOF Economic Barometer (via `kofdata` package API)
 - **MIDAS-Latent** (Extension): MF-VAR latent states extracted from state-space model
 
-See `data/data_sources.md` for detailed provenance.
+See `data/raw_data/data_sources.md` for detailed provenance and `data/processed/metadata_quarterly*.csv` for variable documentation.
 
 ## Key Configuration
 
@@ -256,9 +297,13 @@ Edit main scripts to adjust:
 5. Restore original scale (reverse transformations)
 
 ### Evaluation
-- **Cross-validation**: Expanding window 1-step ahead (default: 10 folds, configurable)
-- **Coverage**: 1993 Q4 to 2025 Q2
-- **Metrics**: RMSE, MAE by horizon and variable
+- **Cross-validation**: Expanding window with multiple horizons
+  - Default: 10 folds (configurable via `--max-folds`)
+  - Full run: 20 folds (via `scripts/run_cv_20folds.R`)
+  - Coverage: 1992 Q1 to 2025 Q2 (training starts from 1992 Q2-1993 Q3)
+  - Test folds: 2019 Q3 to 2024 Q2
+- **Extra months parameter**: Tests ragged-edge nowcasting (0, 1, 2 months beyond training quarter)
+- **Metrics**: RMSE, MAE by horizon, variable, and extra_months configuration
 
 ### Output
 - Forecast tables (CSV)
