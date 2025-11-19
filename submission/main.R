@@ -37,7 +37,7 @@ Available workflows:
                Output: output/midas_forecasts_*.csv, midas_summary.txt, plots
                
   benchmarks - Run benchmark model comparison (MF-VAR vs MIDAS vs AR(2) vs RW-trend)
-               Includes holdout evaluation and cross-validation.
+               Includes expanding window cross-validation.
                Output: output/model_benchmark_*.csv, comparison plots
                
   combined   - Generate combined forecast plots (all models overlaid)
@@ -154,7 +154,7 @@ run_midas <- function() {
 run_benchmark <- function() {
   cat("\n=== Running Benchmark Model Comparison ===\n\n")
   cat("Comparing MF-VAR against MIDAS, AR(2), and RW-trend models...\n")
-  cat("This includes holdout evaluation and cross-validation.\n")
+  cat("This includes expanding window cross-validation.\n")
   cat("This may take several minutes.\n\n")
   
   tryCatch({

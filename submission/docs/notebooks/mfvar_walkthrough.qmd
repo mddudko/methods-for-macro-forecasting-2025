@@ -121,7 +121,7 @@ This design lets monthly information update quarterly forecasts without waiting 
 
 `estimate_mfvar_model()` wraps two critical calls:
 
-1.  `mfbvar::set_prior()` builds the Minnesota prior (tightens own lags, shrinks cross-variable effects) and draws `n_reps = 4000` posterior samples after `n_burnin = 2000`, thinning every fourth draw.
+1.  `mfbvar::set_prior()` builds the Minnesota prior (tightens own lags, shrinks cross-variable effects) and draws `n_reps = 10000` posterior samples after `n_burnin = 5000` (package defaults).
 2.  `mfbvar::estimate_mfbvar()` estimates the reduced-form VAR and the accompanying state-space parameters under an inverse-Wishart covariance prior (`variance = "iw"`).
 
 Lag length and forecast horizon are configurable but jointly affect evaluation windows because the pipeline holds out the last quarters for testing.
@@ -131,8 +131,8 @@ Lag length and forecast horizon are configurable but jointly affect evaluation w
 The main script `Draft_MFVAR.r` orchestrates the end-to-end run:
 
 1.  **Load helpers** (`R/setup.R`, `R/data_processing.R`, `R/evaluation.R`, `R/plotting.R`).
-2.  **Prepare data**: read quarterly CSV, download barometer, align with `trim_to_overlap()` and `window_baro()`, then build `Y`.
-3.  **Evaluation suites**: call `run_holdout_evaluation()` and `run_cross_validation()` to benchmark MF-VAR versus AR(2).
+2.  **Prepare data**: read quarterly CSV, download barometer, align with `trim_to_overlap()` and `window_monthly_series()`, then build `Y`.
+3.  **Evaluation suite**: call `run_cross_validation()` to benchmark MF-VAR versus other models.
 4.  **Model fit**: `estimate_mfvar_model(Y, n_lags = 5, n_fcst = 12)`.
 5.  **Forecast tidying**: keep target variables, compute horizon labels, back-transform exchange-rate levels for presentation.
 6.  **Persistence**: write CSVs, summary text, plots, and the fitted model RDS.

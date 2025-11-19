@@ -71,7 +71,7 @@ for (lambda1 in lambda_values) {
   
   # Set options for this lambda value
   options(mfvar.lambda1 = lambda1)
-  options(mfvar.aggregation = "first")
+  options(mfvar.aggregation = "average")
   options(mfvar.n_reps = 10000L)
   options(mfvar.n_burnin = 5000L)
   
