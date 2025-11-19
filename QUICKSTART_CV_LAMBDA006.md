@@ -6,10 +6,15 @@ This branch contains scripts to run a full cross-validation of the manual MF-VAR
 
 ```bash
 cd submission/
+
+# Run with 20 folds (recommended, ~60-120 minutes)
+./run_cv_lambda006_20folds.sh
+
+# Or run with 10 folds (default, ~30-60 minutes)
 ./run_cv_lambda006.sh
 ```
 
-Wait 30-60 minutes, then check outputs in `output/benchmarks/`.
+Then check outputs in `output/benchmarks/`.
 
 ## What This Does
 
@@ -17,7 +22,8 @@ Runs a complete cross-validation with:
 - **lambda1 = 0.06** (optimal from sensitivity analysis)
 - **Full MCMC mode** (2000 draws, 700 burnin, 600 simulations)
 - **Manual MF-VAR only** (other models already run)
-- **10 folds × 3 coverage options** = 30 CV runs
+- **20 folds × 3 coverage options** = 60 CV runs (recommended)
+- Or **10 folds × 3 coverage options** = 30 CV runs (default)
 
 ## Output Files
 
@@ -45,18 +51,24 @@ output/benchmarks/
 ## Alternative Execution
 
 ```bash
-# Direct R execution
+# Recommended: 20 folds
 cd submission/
-Rscript scripts/run_cv_manual_lambda006.R
+./run_cv_lambda006_20folds.sh
 
-# Custom fold count (e.g., 20 folds)
+# Or with default 10 folds
+./run_cv_lambda006.sh
+
+# Or direct R execution with custom fold count
 Rscript scripts/run_cv_manual_lambda006.R --max-folds=20
+Rscript scripts/run_cv_manual_lambda006.R --max-folds=10
 ```
 
 ## Verification
 
 ```bash
-# Check output has data (should be ~180+ lines for 10 folds)
+# Check output has data
+# For 20 folds: should be ~360 lines
+# For 10 folds: should be ~180 lines
 wc -l output/benchmarks/csv/mfvar_manual_lambda006_cv_predictions.csv
 
 # View summary
