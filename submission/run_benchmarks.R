@@ -507,7 +507,10 @@ output_time <- system.time({
     cv_plot_mae_bar <- plot_cv_errors_by_variable(cv_metrics_tbl, OUT_PLOTS_DIR, "mae")
     cv_plot_rmse_heatmap <- plot_cv_errors_heatmap(cv_metrics_tbl, OUT_PLOTS_DIR, "rmse", horizon_filter = 4)
     cv_plot_mae_heatmap <- plot_cv_errors_heatmap(cv_metrics_tbl, OUT_PLOTS_DIR, "mae", horizon_filter = 4)
-    cv_plot_paths <- c(cv_plot_rmse_bar, cv_plot_mae_bar, cv_plot_rmse_heatmap, cv_plot_mae_heatmap)
+    cv_plot_rmse_relative <- plot_cv_relative_errors(cv_metrics_tbl, OUT_PLOTS_DIR, "rmse", benchmark_model = "AR(2)")
+    cv_plot_mae_relative <- plot_cv_relative_errors(cv_metrics_tbl, OUT_PLOTS_DIR, "mae", benchmark_model = "AR(2)")
+    cv_plot_paths <- c(cv_plot_rmse_bar, cv_plot_mae_bar, cv_plot_rmse_heatmap, cv_plot_mae_heatmap, 
+                       cv_plot_rmse_relative, cv_plot_mae_relative)
     cv_plot_paths <- cv_plot_paths[!is.null(cv_plot_paths) & nzchar(cv_plot_paths)]
   }
 

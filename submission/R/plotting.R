@@ -590,3 +590,90 @@ plot_cv_errors_heatmap <- function(cv_metrics_tbl, out_dir, metric_type = "rmse"
   out_path
 }
 
+#' Plot CV errors as relative performance (percentage vs AR(2) benchmark)
+#' 
+#' @param cv_metrics_tbl CV metrics table with variable, model, rmse, mae columns
+#' @param out_dir Output directory for plot
+#' @param metric_type Either "rmse" or "mae"
+#' @param benchmark_model Model to use as 100% baseline (default "AR(2)")
+#' @return Path to saved plot
+plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse", benchmark_model = "AR(2)") {
+  if (!nrow(cv_metrics_tbl)) {
+    message("No CV metrics to plot")
+    return(NULL)
+  }
+  
+  metric_col <- if (metric_type == "rmse") "rmse" else "mae"
+  metric_label <- toupper(metric_type)
+  
+  # Filter to 1-step and 1-year ahead horizons
+  plot_df <- cv_metrics_tbl |>
+    dplyr::filter(
+      horizon %in% c(1, 4, "1-step ahead", "1-year ahead") | 
+      grepl("1-step|1-year", horizon, ignore.case = TRUE)
+    ) |>
+    dplyr::mutate(
+      horizon_label = dplyr::case_when(
+        horizon %in% c(1, "1-step ahead") | grepl("1-step", horizon, ignore.case = TRUE) ~ "1-step ahead",
+        horizon %in% c(4, "1-year ahead") | grepl("1-year", horizon, ignore.case = TRUE) ~ "1-year ahead",
+        TRUE ~ as.character(horizon)
+      ),
+      variable_label = dplyr::case_when(
+        variable == "gdp_growth" ~ "GDP Growth",
+        variable == "inflation" ~ "Inflation",
+        variable == "exch_rate" ~ "Exchange Rate (log CHF/EUR)",
+        TRUE ~ variable
+      )
+    )
+  
+  if (!nrow(plot_df)) {
+    message("No data for 1-step or 1-year ahead horizons")
+    return(NULL)
+  }
+  
+  # Calculate relative errors (percentage of benchmark)
+  plot_df <- plot_df |>
+    dplyr::group_by(variable, horizon_label) |>
+    dplyr::mutate(
+      benchmark_value = .data[[metric_col]][model == benchmark_model][1],
+      relative_error = (.data[[metric_col]] / benchmark_value) * 100
+    ) |>
+    dplyr::ungroup()
+  
+  if (any(is.na(plot_df$benchmark_value))) {
+    warning("Benchmark model '", benchmark_model, "' not found for some variables")
+  }
+  
+  # Calculate number of folds
+  n_folds <- unique(plot_df$observations)[1]
+  if (is.na(n_folds) || n_folds == 0) n_folds <- "unknown"
+  
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = model, y = relative_error, fill = model)) +
+    ggplot2::geom_col(position = "dodge", width = 0.7) +
+    ggplot2::geom_hline(yintercept = 100, linetype = "dashed", color = "gray30", linewidth = 0.8) +
+    ggplot2::facet_grid(horizon_label ~ variable_label, scales = "fixed") +
+    ggplot2::scale_fill_brewer(palette = "Set2") +
+    ggplot2::scale_y_continuous(labels = function(x) paste0(x, "%")) +
+    ggplot2::labs(
+      title = paste0("Relative Forecast Performance (", metric_label, ")"),
+      subtitle = sprintf("Relative to %s benchmark = 100%% | %s-fold expanding window CV", benchmark_model, n_folds),
+      x = "Model",
+      y = paste0("Relative ", metric_label, " (% of ", benchmark_model, ")")
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      legend.position = "none",
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      axis.text.y = ggplot2::element_text(size = 9),
+      strip.text = ggplot2::element_text(face = "bold"),
+      panel.grid.major.x = ggplot2::element_blank()
+    )
+  
+  file_name <- paste0("cv_relative_errors_", metric_type, ".png")
+  out_path <- file.path(out_dir, file_name)
+  ggplot2::ggsave(out_path, p, width = 12, height = 6, dpi = 150)
+  message("Created: ", out_path)
+  out_path
+}
+
+
