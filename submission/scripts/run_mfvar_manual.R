@@ -73,7 +73,7 @@ if (micro_grid_mode) {
 }
 
 lambda_defaults <- list(
-	lambda1 = c(0.04, 0.06, 0.08),
+	lambda1 = c(0.06),
 	lambda2 = c(1, 2),
 	lambda3 = 1,
 	lambda4 = c(1),
@@ -215,7 +215,7 @@ if (run_config$tune) {
 	}
 } else {
 	hyperparams <- list(
-		lambda1 = 0.2,
+		lambda1 = 0.06,
 		lambda2 = 1.0,
 		lambda3 = 1.0,
 		lambda4 = 1.0,

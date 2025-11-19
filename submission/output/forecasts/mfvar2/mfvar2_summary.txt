@@ -4,11 +4,11 @@ Sample: 1992-06-01 to 2025-06-01
 Quarterly vars: gdp_growth, inflation, exch_rate
 Monthly vars: plkopr, devkum, amarbma, smi_monthly_return
 Lag order: 2
-Draws: 4000 (burn-in 1000)
-Forecast horizon: 12 months
+Draws: 1000 (burn-in 300)
+Forecast horizon: 1 months
 Selected hyperparameters (if tuned):
 $lambda1
-[1] 0.04
+[1] 0.06
 
 $lambda2
 [1] 1
@@ -22,11 +22,3 @@ $lambda4
 $lambda5
 [1] 1
 
-
-Micro-grid evaluation (top rows):
-  lambda1 lambda2 lambda3 lambda4 lambda5 log_mdd
-1    0.04       1       1       1       1  -1e+10
-2    0.06       1       1       1       1  -1e+10
-3    0.08       1       1       1       1  -1e+10
-4    0.04       2       1       1       1  -1e+10
-5    0.06       2       1       1       1  -1e+10

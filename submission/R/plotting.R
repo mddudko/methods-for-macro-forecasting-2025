@@ -479,6 +479,7 @@ plot_combined_forecasts <- function(
       breaks = x_breaks,
       labels = function(x) format(zoo::as.yearqtr(x), "%Y Q%q")
     ) +
+    ggplot2::scale_y_continuous(breaks = scales::breaks_pretty(n = 8)) +
     ggplot2::scale_colour_manual(name = NULL, values = colour_values) +
     ggplot2::labs(
       title = title,
