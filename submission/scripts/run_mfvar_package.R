@@ -165,6 +165,7 @@ latent_states_path <- NULL
 latent_states_plot <- NULL
 latent_heatmap_plot <- NULL
 latent_vs_actual_plot <- NULL
+latent_actuals_kof_plot <- NULL
 latent_states <- NULL
 need_latent_states <- ragged_months_observed > 0L || !identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0")
 if (isTRUE(need_latent_states)) {
@@ -196,6 +197,34 @@ if (!identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0") && !is.null(latent_state
       NULL
     }
   )
+
+    kof_ts_plot <- tryCatch(
+      {
+        baro_raw <- fetch_kof_barometer()
+        window_baro(baro_raw, qdat_orig, end_mode = "available")
+      },
+      error = function(err) {
+        warning(sprintf("Could not prepare KOF barometer for latent plots: %s", conditionMessage(err)), call. = FALSE)
+        NULL
+      }
+    )
+
+    if (!is.null(kof_ts_plot)) {
+      latent_actuals_kof_plot <- tryCatch(
+        plot_latent_actuals_with_kof(
+          latent_states,
+          qdat_orig,
+          kof_ts_plot,
+          PLOT_DIR,
+          target_variables = target_variables,
+          transforms = transforms
+        ),
+        error = function(err) {
+          warning(sprintf("Latent/actual/KOF plot failed: %s", conditionMessage(err)), call. = FALSE)
+          NULL
+        }
+      )
+    }
 }
 
 fc <- predict(mod_ss, aggregate_fcst = TRUE, pred_bands = 0.8)
@@ -451,6 +480,9 @@ if (!is.null(latent_heatmap_plot)) {
 }
 if (!is.null(latent_vs_actual_plot)) {
   message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_vs_actual.png\n")
+}
+if (!is.null(latent_actuals_kof_plot)) {
+  message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof.png\n")
 }
 
 message_lines <- c(
