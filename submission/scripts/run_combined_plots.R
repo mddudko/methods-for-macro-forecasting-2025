@@ -35,6 +35,11 @@ MFVAR2_DIR <- file.path(".", "output", "forecasts", "mfvar2")
 OUT_DIR <- file.path(".", "output", "forecasts", "combined")
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
+COMBINED_PLOT_WIDTH <- 14
+COMBINED_PLOT_HEIGHT <- 6
+COMBINED_PLOT_DPI <- 300
+COMBINED_PLOT_EXPORT_PDF <- TRUE
+
 # --- Load forecasts ----------------------------------------------------------
 message("Loading model forecasts...")
 
@@ -272,7 +277,11 @@ if (nrow(gdp_mfvar) > 0 && nrow(gdp_midas) > 0) {
     out_dir = OUT_DIR,
     title = "GDP growth: all model forecasts",
     y_label = "Annualised percentage",
-    file_name = "combined_gdp_growth.png"
+    file_name = "combined_gdp_growth.png",
+    width = COMBINED_PLOT_WIDTH,
+    height = COMBINED_PLOT_HEIGHT,
+    dpi = COMBINED_PLOT_DPI,
+    export_pdf = COMBINED_PLOT_EXPORT_PDF
   )
 }
 
@@ -318,7 +327,11 @@ if (nrow(infl_mfvar) > 0 && nrow(infl_midas) > 0) {
     out_dir = OUT_DIR,
     title = "Inflation: all model forecasts",
     y_label = "Annualised percentage",
-    file_name = "combined_inflation.png"
+    file_name = "combined_inflation.png",
+    width = COMBINED_PLOT_WIDTH,
+    height = COMBINED_PLOT_HEIGHT,
+    dpi = COMBINED_PLOT_DPI,
+    export_pdf = COMBINED_PLOT_EXPORT_PDF
   )
 }
 
@@ -364,7 +377,11 @@ if (nrow(exch_mfvar) > 0 && nrow(exch_midas) > 0) {
     out_dir = OUT_DIR,
     title = "Exchange rate: all model forecasts",
     y_label = "CHF per EUR",
-    file_name = "combined_exchange_rate.png"
+    file_name = "combined_exchange_rate.png",
+    width = COMBINED_PLOT_WIDTH,
+    height = COMBINED_PLOT_HEIGHT,
+    dpi = COMBINED_PLOT_DPI,
+    export_pdf = COMBINED_PLOT_EXPORT_PDF
   )
 }
 

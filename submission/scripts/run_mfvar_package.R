@@ -168,6 +168,9 @@ latent_vs_actual_plot <- NULL
 latent_actuals_plot <- NULL
 latent_actuals_kof_plot <- NULL
 latent_actuals_kof_gdp_plot <- NULL
+latent_actuals_kof_gdp_actual_latent_plot <- NULL
+latent_actuals_kof_gdp_actual_kof_plot <- NULL
+latent_actuals_kof_gdp_latent_kof_plot <- NULL
 latent_states <- NULL
 need_latent_states <- ragged_months_observed > 0L || !identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0")
 if (isTRUE(need_latent_states)) {
@@ -246,6 +249,68 @@ if (!identical(Sys.getenv("MFVAR_EXTRACT_STATES"), "0") && !is.null(latent_state
             NULL
           }
         )
+
+        if (!is.null(latent_actuals_kof_gdp_plot)) {
+          latent_actuals_kof_gdp_actual_latent_plot <- tryCatch(
+            plot_latent_actuals_with_kof(
+              latent_states,
+              qdat_orig,
+              kof_ts_plot,
+              PLOT_DIR,
+              target_variables = "gdp_growth",
+              transforms = transforms,
+              filename = "mfvar_latent_actuals_kof_gdp_actual_latent.png",
+              ylim = c(-3.5, 3.5),
+              width = 14,
+              height = 6,
+              series_types = c("Actual (Quarterly)", "Latent State (MF-VAR)")
+            ),
+            error = function(err) {
+              warning(sprintf("GDP actual vs latent plot failed: %s", conditionMessage(err)), call. = FALSE)
+              NULL
+            }
+          )
+
+          latent_actuals_kof_gdp_actual_kof_plot <- tryCatch(
+            plot_latent_actuals_with_kof(
+              latent_states,
+              qdat_orig,
+              kof_ts_plot,
+              PLOT_DIR,
+              target_variables = "gdp_growth",
+              transforms = transforms,
+              filename = "mfvar_latent_actuals_kof_gdp_actual_kof.png",
+              ylim = c(-3.5, 3.5),
+              width = 14,
+              height = 6,
+              series_types = c("Actual (Quarterly)", "KOF Barometer (Monthly)")
+            ),
+            error = function(err) {
+              warning(sprintf("GDP actual vs KOF plot failed: %s", conditionMessage(err)), call. = FALSE)
+              NULL
+            }
+          )
+
+          latent_actuals_kof_gdp_latent_kof_plot <- tryCatch(
+            plot_latent_actuals_with_kof(
+              latent_states,
+              qdat_orig,
+              kof_ts_plot,
+              PLOT_DIR,
+              target_variables = "gdp_growth",
+              transforms = transforms,
+              filename = "mfvar_latent_actuals_kof_gdp_latent_kof.png",
+              ylim = c(-3.5, 3.5),
+              width = 14,
+              height = 6,
+              series_types = c("Latent State (MF-VAR)", "KOF Barometer (Monthly)")
+            ),
+            error = function(err) {
+              warning(sprintf("GDP latent vs KOF plot failed: %s", conditionMessage(err)), call. = FALSE)
+              NULL
+            }
+          )
+        }
       }
     }
 }
@@ -509,6 +574,15 @@ if (!is.null(latent_actuals_kof_plot)) {
 }
 if (!is.null(latent_actuals_kof_gdp_plot)) {
   message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof_gdp.png\n")
+}
+if (!is.null(latent_actuals_kof_gdp_actual_latent_plot)) {
+  message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof_gdp_actual_latent.png\n")
+}
+if (!is.null(latent_actuals_kof_gdp_actual_kof_plot)) {
+  message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof_gdp_actual_kof.png\n")
+}
+if (!is.null(latent_actuals_kof_gdp_latent_kof_plot)) {
+  message_lines <- c(message_lines, "  - output/forecasts/mfvar/plots/mfvar_latent_actuals_kof_gdp_latent_kof.png\n")
 }
 
 message_lines <- c(

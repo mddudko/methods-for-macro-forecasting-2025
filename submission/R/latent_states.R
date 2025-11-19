@@ -251,7 +251,12 @@ plot_latent_actuals_with_kof <- function(states_df,
                                          filename = NULL,
                                          ylim = NULL,
                                          width = 10,
-                                         height = 9) {
+                                         height = 9,
+                                         series_types = c(
+                                           "Actual (Quarterly)",
+                                           "Latent State (MF-VAR)",
+                                           "KOF Barometer (Monthly)"
+                                         )) {
   if (is.null(kof_ts) || !inherits(kof_ts, "ts")) {
     stop("kof_ts must be a monthly 'ts' object containing the KOF Barometer.")
   }
@@ -282,6 +287,16 @@ plot_latent_actuals_with_kof <- function(states_df,
   kof_long <- tidyr::crossing(kof_df, variable = prep$available_states) |>
     dplyr::mutate(type = "KOF Barometer (Monthly)")
 
+  type_levels <- c(
+    "Actual (Quarterly)",
+    "Latent State (MF-VAR)",
+    "KOF Barometer (Monthly)"
+  )
+  series_types <- intersect(type_levels, series_types)
+  if (!length(series_types)) {
+    stop("series_types resulted in zero plotted series.")
+  }
+
   combined <- dplyr::bind_rows(prep$actuals_long, prep$latent_long, kof_long) |>
     dplyr::group_by(.data$variable, .data$type) |>
     dplyr::mutate(
@@ -295,27 +310,29 @@ plot_latent_actuals_with_kof <- function(states_df,
       }
     ) |>
     dplyr::ungroup() |>
+    dplyr::filter(.data$type %in% series_types) |>
     dplyr::mutate(
       variable_label = dplyr::recode(.data$variable, !!!prep$label_map, .default = .data$variable),
-      type = factor(
-        .data$type,
-        levels = c("Actual (Quarterly)", "Latent State (MF-VAR)", "KOF Barometer (Monthly)")
-      )
+      type = factor(.data$type, levels = series_types)
     )
 
   # Persist combined data for diagnostics/inspection when plots look degenerate
   debug_path <- file.path(out_dir, "mfvar_latent_actuals_kof_data.csv")
   readr::write_csv(combined, debug_path)
 
+  palette <- c(
+    "Actual (Quarterly)" = "#d95f02",
+    "Latent State (MF-VAR)" = "#1b9e77",
+    "KOF Barometer (Monthly)" = "#7570b3"
+  )
+
   p <- ggplot2::ggplot(combined, ggplot2::aes(x = date, y = value_std, color = type)) +
     ggplot2::geom_line(linewidth = 0.75) +
     ggplot2::facet_wrap(~ variable_label, ncol = 1, scales = "free_y") +
     ggplot2::scale_color_manual(
-      values = c(
-        "Actual (Quarterly)" = "#d95f02",
-        "Latent State (MF-VAR)" = "#1b9e77",
-        "KOF Barometer (Monthly)" = "#7570b3"
-      )
+      values = palette[series_types],
+      limits = series_types,
+      drop = FALSE
     ) +
     ggplot2::labs(
       title = "Latent states, actuals, and KOF Barometer",

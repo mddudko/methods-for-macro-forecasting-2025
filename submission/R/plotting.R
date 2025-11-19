@@ -232,7 +232,11 @@ plot_combined_forecasts <- function(
   file_name,
   latent_df = NULL,
   mfvar_manual_df = NULL,
-  context_quarters = combined_context_quarters) {
+  context_quarters = combined_context_quarters,
+  width = 10,
+  height = 5,
+  dpi = 120,
+  export_pdf = FALSE) {
   # Plot all models together: MF-VAR, MIDAS (trend & simple), and AR(2)
   stopifnot(nrow(mfvar_df) > 0, nrow(history_df) > 0)
 
@@ -491,7 +495,15 @@ plot_combined_forecasts <- function(
     ggplot2::theme(legend.position = "top")
 
   out_path <- file.path(out_dir, file_name)
-  ggplot2::ggsave(out_path, p, width = 10, height = 5, dpi = 120)
+  ggplot2::ggsave(out_path, p, width = width, height = height, dpi = dpi)
+
+  if (isTRUE(export_pdf)) {
+    pdf_name <- if (grepl("\\.pdf$", file_name, ignore.case = TRUE)) file_name else {
+      paste0(tools::file_path_sans_ext(file_name), ".pdf")
+    }
+    pdf_path <- file.path(out_dir, pdf_name)
+    ggplot2::ggsave(pdf_path, p, width = width, height = height, device = "pdf")
+  }
   out_path
 }
 
@@ -684,7 +696,10 @@ plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse
       benchmark_value = .data[[metric_col]][model == benchmark_model][1],
       relative_error = (.data[[metric_col]] / benchmark_value) * 100
     ) |>
-    dplyr::ungroup()
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      ignore_for_scale = model == "MF-VAR (manual)" & variable == "exch_rate"
+    )
   
   if (any(is.na(plot_df$benchmark_value))) {
     warning("Benchmark model '", benchmark_model, "' not found for some variables")
@@ -694,7 +709,51 @@ plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse
   n_folds <- unique(plot_df$observations)[1]
   if (is.na(n_folds) || n_folds == 0) n_folds <- "unknown"
   
-  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = model, y = relative_error, fill = model)) +
+  caps <- plot_df |>
+    dplyr::group_by(variable_label, horizon_label) |>
+    dplyr::summarise(
+      cap_reference = max(relative_error[!ignore_for_scale], na.rm = TRUE),
+      fallback_cap = max(relative_error, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      cap = dplyr::case_when(
+        is.finite(cap_reference) ~ cap_reference * 1.15,
+        is.finite(fallback_cap) ~ fallback_cap * 1.05,
+        TRUE ~ NA_real_
+      )
+    ) |>
+    dplyr::select(variable_label, horizon_label, cap)
+
+  plot_df <- plot_df |>
+    dplyr::left_join(caps, by = c("variable_label", "horizon_label")) |>
+    dplyr::group_by(variable_label, horizon_label) |>
+    dplyr::mutate(
+      fallback_cap = suppressWarnings(max(relative_error[is.finite(relative_error)], na.rm = TRUE)),
+      fallback_cap = dplyr::if_else(is.finite(fallback_cap) & fallback_cap > 0, fallback_cap, NA_real_),
+      cap = dplyr::case_when(
+        is.finite(cap) & cap > 0 ~ cap,
+        !is.na(fallback_cap) ~ fallback_cap,
+        TRUE ~ 0
+      ),
+      relative_error_plot = dplyr::if_else(
+        ignore_for_scale & relative_error > cap,
+        cap,
+        relative_error
+      ),
+      is_capped = ignore_for_scale & relative_error > cap
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::select(-fallback_cap)
+
+  capped_labels <- plot_df |>
+    dplyr::filter(is_capped) |>
+    dplyr::mutate(
+      label_text = sprintf("%.1f%%", relative_error),
+      label_y = relative_error_plot * 0.9
+    )
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = model, y = relative_error_plot, fill = model)) +
     ggplot2::geom_col(position = "dodge", width = 0.7) +
     ggplot2::geom_hline(yintercept = 100, linetype = "dashed", color = "gray30", linewidth = 0.8) +
     ggplot2::facet_grid(horizon_label ~ variable_label, scales = "fixed") +
@@ -704,7 +763,8 @@ plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse
       title = paste0("Relative Forecast Performance (", metric_label, ")"),
       subtitle = sprintf("Relative to %s benchmark = 100%% | %s-fold expanding window CV", benchmark_model, n_folds),
       x = "Model",
-      y = paste0("Relative ", metric_label, " (% of ", benchmark_model, ")")
+      y = paste0("Relative ", metric_label, " (% of ", benchmark_model, ")"),
+      caption = "MF-VAR (manual) exchange-rate errors are clipped for scale; labels show true values"
     ) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
@@ -714,6 +774,16 @@ plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse
       strip.text = ggplot2::element_text(face = "bold"),
       panel.grid.major.x = ggplot2::element_blank()
     )
+
+  if (nrow(capped_labels)) {
+    p <- p + ggplot2::geom_text(
+      data = capped_labels,
+      ggplot2::aes(x = model, y = label_y, label = label_text),
+      inherit.aes = FALSE,
+      size = 3.2,
+      fontface = "bold"
+    )
+  }
   
   file_name <- paste0("cv_relative_errors_", metric_type, ".png")
   out_path <- file.path(out_dir, file_name)
