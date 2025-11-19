@@ -244,13 +244,29 @@ forecast_midas_series <- function(y_series, train_rows, x_train_full, x_future_f
     return(rep(NA_real_, horizon))
   }
 
+  # Get MIDAS parameters from options (defaults match current specification)
+  midas_y_lags <- getOption("midas.y_lags", 2L)  # lags for y (AR component)
+  midas_x_lags <- getOption("midas.x_lags", 2L)  # quarterly lags for monthly x
+  midas_x_m <- getOption("midas.x_m", 3L)        # monthly frequency ratio (3 months per quarter)
+  
   trend_train <- seq_len(length(y_train))
   data_list <- list(y = y_train, x = x_train_full)
-  formula_obj <- stats::as.formula("y ~ mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
+  
+  # Build formula with configurable lags
+  y_lag_spec <- if (length(midas_y_lags) == 1L) {
+    sprintf("k = %d", midas_y_lags)
+  } else {
+    sprintf("k = %s", paste(midas_y_lags, collapse = ":"))
+  }
+  formula_str <- sprintf("y ~ mls(y, %s, m = 1) + fmls(x, k = %d, m = %d)", 
+                        y_lag_spec, midas_x_lags, midas_x_m)
+  formula_obj <- stats::as.formula(formula_str)
 
   if (isTRUE(include_trend)) {
     data_list$trend <- trend_train
-    formula_obj <- stats::as.formula("y ~ trend + mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
+    formula_str <- sprintf("y ~ trend + mls(y, %s, m = 1) + fmls(x, k = %d, m = %d)", 
+                          y_lag_spec, midas_x_lags, midas_x_m)
+    formula_obj <- stats::as.formula(formula_str)
   }
 
   fit <- try(
@@ -324,13 +340,29 @@ forecast_midas_latent <- function(y_series, train_rows, latent_states_df, variab
     return(rep(NA_real_, horizon))
   }
 
+  # Get MIDAS parameters from options (defaults match current specification)
+  midas_y_lags <- getOption("midas.y_lags", 2L)  # lags for y (AR component)
+  midas_x_lags <- getOption("midas.x_lags", 2L)  # quarterly lags for monthly x
+  midas_x_m <- getOption("midas.x_m", 3L)        # monthly frequency ratio (3 months per quarter)
+  
   trend_train <- seq_len(length(y_train))
   data_list <- list(y = y_train, x = x_train_full)
-  formula_obj <- stats::as.formula("y ~ mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
+  
+  # Build formula with configurable lags
+  y_lag_spec <- if (length(midas_y_lags) == 1L) {
+    sprintf("k = %d", midas_y_lags)
+  } else {
+    sprintf("k = %s", paste(midas_y_lags, collapse = ":"))
+  }
+  formula_str <- sprintf("y ~ mls(y, %s, m = 1) + fmls(x, k = %d, m = %d)", 
+                        y_lag_spec, midas_x_lags, midas_x_m)
+  formula_obj <- stats::as.formula(formula_str)
 
   if (isTRUE(include_trend)) {
     data_list$trend <- trend_train
-    formula_obj <- stats::as.formula("y ~ trend + mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
+    formula_str <- sprintf("y ~ trend + mls(y, %s, m = 1) + fmls(x, k = %d, m = %d)", 
+                          y_lag_spec, midas_x_lags, midas_x_m)
+    formula_obj <- stats::as.formula(formula_str)
   }
 
   fit <- try(

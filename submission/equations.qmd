@@ -1,0 +1,27 @@
+---
+title: "Equations"
+author: "Minna"
+---
+
+# MIDAS Equation
+Original MIDAS equation
+$$
+y_t = \beta_0 + \sum_{k=0}^{K} \beta(k;\theta)\, x_{t-k/m} + \varepsilon_t
+$$
+
+## MIDAS Matrix Form
+
+
+
+MIDAS r without trend
+$$
+y_t = \beta_0 + \phi\, y_{t-2} + \sum_{k=0}^{K} \beta(k;\theta)\, x_{t-k/m} + \varepsilon_t
+$$
+
+MIDAS r with trend
+$$
+y_t = \beta_0 + \phi\, y_{t-2} + \delta\, t + \sum_{k=0}^{K} \beta(k;\theta)\, x_{t-k/m} + \varepsilon_t
+$$
+
+
+# MF-VAR Equation
