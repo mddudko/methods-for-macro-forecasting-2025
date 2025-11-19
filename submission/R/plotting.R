@@ -655,7 +655,16 @@ plot_cv_errors_heatmap <- function(cv_metrics_tbl, out_dir, metric_type = "rmse"
 #' @param metric_type Either "rmse" or "mae"
 #' @param benchmark_model Model to use as 100% baseline (default "AR(2)")
 #' @return Path to saved plot
-plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse", benchmark_model = "AR(2)") {
+plot_cv_relative_errors <- function(
+  cv_metrics_tbl,
+  out_dir,
+  metric_type = "rmse",
+  benchmark_model = "AR(2)",
+  export_pdf = FALSE,
+  width = 12,
+  height = 6,
+  dpi = 150
+) {
   if (!nrow(cv_metrics_tbl)) {
     message("No CV metrics to plot")
     return(NULL)
@@ -785,11 +794,19 @@ plot_cv_relative_errors <- function(cv_metrics_tbl, out_dir, metric_type = "rmse
     )
   }
   
-  file_name <- paste0("cv_relative_errors_", metric_type, ".png")
-  out_path <- file.path(out_dir, file_name)
-  ggplot2::ggsave(out_path, p, width = 12, height = 6, dpi = 150)
-  message("Created: ", out_path)
-  out_path
+  file_stem <- paste0("cv_relative_errors_", metric_type)
+  png_path <- file.path(out_dir, paste0(file_stem, ".png"))
+  ggplot2::ggsave(png_path, p, width = width, height = height, dpi = dpi)
+  message("Created: ", png_path)
+
+  pdf_path <- NULL
+  if (export_pdf) {
+    pdf_path <- file.path(out_dir, paste0(file_stem, ".pdf"))
+    ggplot2::ggsave(pdf_path, p, width = width, height = height, dpi = dpi, device = grDevices::pdf)
+    message("Created: ", pdf_path)
+  }
+
+  c(png_path, pdf_path)
 }
 
 
