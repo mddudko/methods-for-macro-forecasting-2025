@@ -283,10 +283,12 @@ plot_latent_actuals_with_kof <- function(states_df,
     dplyr::group_by(.data$variable, .data$type) |>
     dplyr::mutate(
       value_std = {
-        mean_val <- mean(.data$value, na.rm = TRUE)
         sd_val <- stats::sd(.data$value, na.rm = TRUE)
-        centered <- .data$value - mean_val
-        ifelse(is.na(sd_val) || sd_val == 0, centered, centered / sd_val)
+        if (is.na(sd_val) || sd_val == 0) {
+          .data$value - mean(.data$value, na.rm = TRUE)
+        } else {
+          as.numeric(scale(.data$value))
+        }
       }
     ) |>
     dplyr::ungroup() |>
@@ -297,6 +299,10 @@ plot_latent_actuals_with_kof <- function(states_df,
         levels = c("Actual (Quarterly)", "Latent State (MF-VAR)", "KOF Barometer (Monthly)")
       )
     )
+
+  # Persist combined data for diagnostics/inspection when plots look degenerate
+  debug_path <- file.path(out_dir, "mfvar_latent_actuals_kof_data.csv")
+  readr::write_csv(combined, debug_path)
 
   actual_points <- combined |>
     dplyr::filter(.data$type == "Actual (Quarterly)")
