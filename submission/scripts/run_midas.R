@@ -147,7 +147,7 @@ for (var in target_vars) {
   # MIDAS with trend - use data parameter pattern with AR(2)
   fit_trend <- tryCatch({
     data_list <- list(y = y_train, x = x_train, trend = trend_train)
-    formula_obj <- stats::as.formula("y ~ trend + mls(y, k = 1:2, m = 1) + fmls(x, k = 2, m = 3)")
+    formula_obj <- stats::as.formula("y ~ trend + mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
     midasr::midas_r(formula_obj, data = data_list, start = list(x = rep(0, 3)))
   }, error = function(e) {
     warning(sprintf("MIDAS (trend) failed for %s: %s", var, conditionMessage(e)))
@@ -157,7 +157,7 @@ for (var in target_vars) {
   # MIDAS without trend - use data parameter pattern with AR(2)
   fit_simple <- tryCatch({
     data_list <- list(y = y_train, x = x_train)
-    formula_obj <- stats::as.formula("y ~ mls(y, k = 1:2, m = 1) + fmls(x, k = 2, m = 3)")
+    formula_obj <- stats::as.formula("y ~ mls(y, k = 2, m = 1) + fmls(x, k = 2, m = 3)")
     midasr::midas_r(formula_obj, data = data_list, start = list(x = rep(0, 3)))
   }, error = function(e) {
     warning(sprintf("MIDAS (simple) failed for %s: %s", var, conditionMessage(e)))
