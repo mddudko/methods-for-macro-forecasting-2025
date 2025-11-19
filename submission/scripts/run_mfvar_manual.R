@@ -28,12 +28,28 @@ arg_value <- function(prefix, default = NULL) {
 	val
 }
 
+parse_numeric_grid <- function(value, default) {
+	if (is.null(value)) return(default)
+	nums <- suppressWarnings(as.numeric(strsplit(value, ",")[[1]]))
+	nums <- nums[is.finite(nums)]
+	if (!length(nums)) {
+		return(default)
+	}
+	unique(nums)
+}
+
 fast_mode <- arg_has("--fast")
 output_dir <- arg_value("--output-dir", file.path("output", "forecasts", "mfvar2"))
 horizon_months <- as.integer(arg_value("--horizon", "12"))
 if (is.na(horizon_months) || horizon_months < 1) {
 	stop("Invalid --horizon value. Provide a positive integer (months).")
 }
+
+micro_grid_mode <- arg_has("--micro-grid")
+lambda1_grid_arg <- arg_value("--lambda1-grid")
+lambda2_grid_arg <- arg_value("--lambda2-grid")
+lambda4_grid_arg <- arg_value("--lambda4-grid")
+lambda5_grid_arg <- arg_value("--lambda5-grid")
 
 dir_create <- function(path) if (!dir.exists(path)) dir.create(path, recursive = TRUE)
 
@@ -52,6 +68,113 @@ run_config <- list(
 	n_sim = if (fast_mode) 250L else 1000L
 )
 
+if (micro_grid_mode) {
+	run_config$tune <- TRUE
+}
+
+lambda_defaults <- list(
+	lambda1 = c(0.04, 0.06, 0.08),
+	lambda2 = c(1, 2),
+	lambda3 = 1,
+	lambda4 = c(1),
+	lambda5 = c(1)
+)
+
+lambda_grids <- list(
+	lambda1 = parse_numeric_grid(lambda1_grid_arg, lambda_defaults$lambda1),
+	lambda2 = parse_numeric_grid(lambda2_grid_arg, lambda_defaults$lambda2),
+	lambda3 = lambda_defaults$lambda3,
+	lambda4 = parse_numeric_grid(lambda4_grid_arg, lambda_defaults$lambda4),
+	lambda5 = parse_numeric_grid(lambda5_grid_arg, lambda_defaults$lambda5)
+)
+
+run_micro_grid_tuning <- function(data_prepared,
+		p,
+		lambda_grids,
+		n_gibbs_mdd,
+		burnin_mdd,
+		seed) {
+	if (!inherits(data_prepared, "mfvar_data")) {
+		stop("micro-grid tuning requires an mfvar_data object")
+	}
+	y_data <- data_prepared$data
+	metadata <- data_prepared$metadata
+	grid <- expand.grid(
+		lambda1 = lambda_grids$lambda1,
+		lambda2 = lambda_grids$lambda2,
+		lambda3 = lambda_grids$lambda3,
+		lambda4 = lambda_grids$lambda4,
+		lambda5 = lambda_grids$lambda5,
+		stringsAsFactors = FALSE
+	)
+	if (!nrow(grid)) {
+		stop("micro-grid produced zero combinations; check lambda grids")
+	}
+	message(sprintf("→ Micro-grid tuning over %d combinations", nrow(grid)))
+	start_time <- Sys.time()
+	grid$log_mdd <- NA_real_
+	for (i in seq_len(nrow(grid))) {
+		combo <- grid[i, ]
+		iter_start <- Sys.time()
+		log_mdd <- tryCatch(
+			mfvar2:::`.compute_marginal_data_density_geweke`(
+				y_data = y_data,
+				metadata = metadata,
+				p = p,
+				lambda1 = combo$lambda1,
+				lambda2 = combo$lambda2,
+				lambda3 = combo$lambda3,
+				lambda4 = combo$lambda4,
+				lambda5 = combo$lambda5,
+				n_gibbs = n_gibbs_mdd,
+				burnin = burnin_mdd,
+				seed = seed
+			),
+			error = function(e) {
+				warning(sprintf("Micro-grid combo failed: %s", e$message))
+				return(-Inf)
+			}
+		)
+		grid$log_mdd[i] <- log_mdd
+		iter_elapsed <- as.numeric(difftime(Sys.time(), iter_start, units = "secs"))
+		total_elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+		avg_time <- total_elapsed / i
+		remaining <- (nrow(grid) - i) * avg_time
+		message(sprintf(
+			"  • Combo %02d/%02d | λ1=%.3f λ2=%.1f λ4=%.1f λ5=%.1f | %.1fs (ETA %.1fm)",
+			i,
+			nrow(grid),
+			combo$lambda1,
+			combo$lambda2,
+			combo$lambda4,
+			combo$lambda5,
+			iter_elapsed,
+			remaining / 60
+		))
+	}
+	best_idx <- which.max(grid$log_mdd)
+	best <- grid[best_idx, ]
+	message(sprintf(
+		"→ Micro-grid best: λ1=%.3f λ2=%.1f λ3=%.1f λ4=%.1f λ5=%.1f | log MDD %.2f",
+		best$lambda1,
+		best$lambda2,
+		best$lambda3,
+		best$lambda4,
+		best$lambda5,
+		best$log_mdd
+	))
+	list(
+		hyperparameters = list(
+			lambda1 = best$lambda1,
+			lambda2 = best$lambda2,
+			lambda3 = best$lambda3,
+			lambda4 = best$lambda4,
+			lambda5 = best$lambda5
+		),
+		grid = grid
+	)
+}
+
 message(sprintf("→ mfvar2 runner | fast mode: %s | tuning: %s", fast_mode, run_config$tune))
 
 start_time <- Sys.time()
@@ -60,21 +183,36 @@ adapter <- prepare_mfvar2_input(verbose = TRUE)
 qdat_raw <- read_quarterly_data(file.path(".", "data"))
 last_obs_qtr <- tail(qdat_raw$qtr, 1)
 
+hyperparams <- NULL
+grid_details <- NULL
 if (run_config$tune) {
-	message("→ tuning hyperparameters (mfvar2)")
-	hyperparams <- mfvar2::tune_minnesota_hyper(
-		data_prepared = adapter$prepared,
-		p = 2,
-		lambda1_grid = c(0.05, 0.1, 0.15, 0.2, 0.3),
-		lambda2_grid = c(1, 2, 3, 4, 5),
-		lambda3_grid = c(1),
-		lambda4_grid = c(1, 2, 3, 4, 5),
-		lambda5_grid = c(1, 2, 3, 4, 5),
-		n_gibbs_mdd = if (fast_mode) 750L else 2000L,
-		burnin_mdd = if (fast_mode) 300L else 1000L,
-		verbose = TRUE,
-		seed = runner_seed
-	)
+	if (micro_grid_mode) {
+		micro_res <- run_micro_grid_tuning(
+			data_prepared = adapter$prepared,
+			p = 2,
+			lambda_grids = lambda_grids,
+			n_gibbs_mdd = if (fast_mode) 750L else 2000L,
+			burnin_mdd = if (fast_mode) 300L else 1000L,
+			seed = runner_seed
+		)
+		hyperparams <- micro_res$hyperparameters
+		grid_details <- micro_res$grid
+	} else {
+		message("→ tuning hyperparameters (mfvar2)")
+		hyperparams <- mfvar2::tune_minnesota_hyper(
+			data_prepared = adapter$prepared,
+			p = 2,
+			lambda1_grid = c(0.05, 0.1, 0.15, 0.2, 0.3),
+			lambda2_grid = c(1, 2, 3, 4, 5),
+			lambda3 = 1,
+			lambda4_grid = c(1, 2, 3, 4, 5),
+			lambda5_grid = c(1, 2, 3, 4, 5),
+			n_gibbs_mdd = if (fast_mode) 750L else 2000L,
+			burnin_mdd = if (fast_mode) 300L else 1000L,
+			verbose = TRUE,
+			seed = runner_seed
+		)
+	}
 } else {
 	hyperparams <- list(
 		lambda1 = 0.2,
@@ -185,6 +323,10 @@ cat(sprintf("Draws: %d (burn-in %d)\n", results$settings$n_draws, results$settin
 cat(sprintf("Forecast horizon: %d months\n", horizon_months))
 cat("Selected hyperparameters (if tuned):\n")
 print(results$hyperparameters)
+if (!is.null(grid_details)) {
+	cat("\nMicro-grid evaluation (top rows):\n")
+	print(utils::head(grid_details[order(-grid_details$log_mdd), ], n = min(5, nrow(grid_details))))
+}
 sink()
 
 elapsed <- difftime(Sys.time(), start_time, units = "mins")

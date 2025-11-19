@@ -175,7 +175,7 @@ mfvar2_cv_config <- list(
   burnin = if (fast_mode) 250L else 700L,
   n_sim = if (fast_mode) 250L else 600L,
   hyperparameters = list(
-    lambda1 = 0.2,
+    lambda1 = 0.04,
     lambda2 = 1.0,
     lambda3 = 1.0,
     lambda4 = 1.0,
