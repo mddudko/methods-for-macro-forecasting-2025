@@ -280,7 +280,7 @@ plot_latent_actuals_with_kof <- function(states_df,
     dplyr::mutate(type = "KOF Barometer (Monthly)")
 
   combined <- dplyr::bind_rows(prep$actuals_long, prep$latent_long, kof_long) |>
-    dplyr::group_by(.data$variable) |>
+    dplyr::group_by(.data$variable, .data$type) |>
     dplyr::mutate(
       value_std = {
         mean_val <- mean(.data$value, na.rm = TRUE)
@@ -309,7 +309,7 @@ plot_latent_actuals_with_kof <- function(states_df,
       size = 1.8,
       inherit.aes = FALSE
     ) +
-    ggplot2::facet_wrap(~ variable_label, ncol = 1) +
+    ggplot2::facet_wrap(~ variable_label, ncol = 1, scales = "free_y") +
     ggplot2::scale_color_manual(
       values = c(
         "Actual (Quarterly)" = "#d95f02",
