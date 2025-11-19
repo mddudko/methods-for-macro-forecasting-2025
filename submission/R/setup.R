@@ -21,7 +21,20 @@ activate_project <- function() {
   # wrong package versions from the global library.
   activate_path <- file.path("renv", "activate.R")
   if (!file.exists(activate_path)) {
-    stop("Missing renv activation script at renv/activate.R. Run this from the project root or restore renv.")
+    search_dir <- dirname(normalizePath(".", winslash = "/", mustWork = TRUE))
+    repeat {
+      candidate <- file.path(search_dir, "renv", "activate.R")
+      if (file.exists(candidate)) {
+        activate_path <- candidate
+        setwd(search_dir)
+        break
+      }
+      parent <- dirname(search_dir)
+      if (identical(parent, search_dir)) {
+        stop("Missing renv activation script at renv/activate.R. Run this from the project root or restore renv.")
+      }
+      search_dir <- parent
+    }
   }
   source(activate_path, local = TRUE)
 }
