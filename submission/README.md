@@ -42,7 +42,6 @@ See [`AUTHORS.yml`](AUTHORS.yml) for contributor information.
 │   │   └── *.rds              # Saved model objects
 │   └── benchmarks/            # Model comparison & evaluation
 │       ├── model_benchmark_*.csv   # Comparison metrics
-│       ├── forecast_evaluation.csv # Holdout evaluation
 │       └── *.png              # Comparison plots
 │
 ├── docs/                       # Documentation and analysis
@@ -87,11 +86,10 @@ Rscript main.R mfvar
 ```
 
 This runs the complete MF-VAR workflow:
-1. Loads quarterly data and KOF Barometer
-2. Performs holdout evaluation
-3. Runs cross-validation
-4. Estimates full-sample model
-5. Generates forecasts and plots
+1. Loads quarterly data and monthly indicators
+2. Estimates full-sample model
+3. Generates forecasts and plots
+4. Extracts latent states (extension)
 
 **Outputs:**
 - `output/forecasts/mfvar/csv/mfvar_forecasts_full.csv` - All forecast horizons
@@ -125,8 +123,7 @@ Rscript main.R benchmarks
 ```
 
 Compares all models (MF-VAR, MIDAS-KOF, MIDAS-Latent, AR(2), RW-trend) with:
-- Holdout evaluation (last 4 quarters)
-- Expanding window cross-validation (up to 20 folds, configurable via `--max-folds`)
+- Expanding window cross-validation (default: 10 folds, configurable via `--max-folds`)
 - CV coverage: 1993 Q4 to 2025 Q2 (training starts from 6 quarters in 1992 Q2-1993 Q3)
 - Per-fold timing breakdowns for performance profiling
 
@@ -165,9 +162,10 @@ Generates multi-model comparison visualizations:
 ### MF-VAR
 - **Lags**: 5 quarters
 - **Prior**: Minnesota with inverse-Wishart covariance
+- **Lambda1**: 0.06 (optimal from sensitivity analysis: avg RMSE=0.748 vs 0.801 for 0.08, 0.937 for 0.1)
+- **Aggregation**: Average (8-13% RMSE improvement over 'first' aggregation across all models)
 - **MCMC**: 10000 draws, 5000 burn-in, no thinning (package defaults)
 - **Monthly indicators**: CPI, FX turnover, unemployment, SNB rate, SMI returns
-- **Aggregation**: Average (for monthly-to-quarterly mapping)
 
 ### Benchmarks
 - **AR(2)**: Autoregressive model (Yule-Walker/OLS/ARIMA fallbacks)
@@ -216,7 +214,6 @@ Edit main scripts to adjust:
 - `build_Y()` - Construct input for `mfbvar` package
 
 ### `R/evaluation.R`
-- `run_holdout_evaluation()` - Holdout forecast accuracy
 - `run_cross_validation()` - Expanding window one-step-ahead CV
 - `predict_ar2()` - AR(2) benchmark with fallbacks
 - `compute_time_index()` - Map forecast steps to time indices

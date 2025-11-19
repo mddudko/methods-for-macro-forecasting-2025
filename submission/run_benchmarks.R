@@ -223,14 +223,10 @@ metrics_tbl <- tibble::tibble(
 holdout_metrics_detailed <- tibble::tibble()
 forecast_wide <- tibble::tibble()
 
-# Set to FALSE to run actual CV
-skip_cv_temp <- FALSE
-run_cv <- !skip_cv && !skip_cv_temp
+# Control cross-validation execution
+run_cv <- !skip_cv
 
-if (skip_cv_temp) {
-  message("→ Temporarily skipping CV computation, loading existing results for output generation...")
-  stage_status("Cross-validation evaluation", "skip")
-} else if (run_cv) {
+if (run_cv) {
   stage_status("Cross-validation evaluation", "start")
 } else {
   stage_status("Cross-validation evaluation", "start")
