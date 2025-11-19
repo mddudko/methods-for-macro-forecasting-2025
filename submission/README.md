@@ -9,10 +9,10 @@
 
 This project implements and compares two approaches for forecasting Swiss macroeconomic indicators using mixed-frequency data:
 
-1. **Mixed-Frequency Bayesian VAR (MF-VAR)** - Incorporates monthly KOF Barometer data with quarterly GDP, inflation, and exchange rate series
-2. **MIDAS Regression** - Uses polynomial distributed lag structures to mix data frequencies
+1. **Mixed-Frequency Bayesian VAR (MF-VAR)** - Incorporates monthly indicator data (SMI returns, Inflation data, CHF-EUR exchange rates and Unemployment data) to predict quarterly GDP, inflation, and exchange rate. 
+2. **MIDAS Regression** - Uses stable polynomial distributed lag structures to use monthly data (KOF Barometer, and the Latent State computed by MF-VAR) to predict the quarterly data.
 
-The analysis includes rigorous evaluation through holdout testing and expanding window cross-validation, with comprehensive benchmark comparisons against AR(2) and random walk models.
+The analysis includes evaluation through expanding window cross-validation, with comprehensive benchmark comparisons against AR(2).
 
 ## Authors
 
@@ -105,10 +105,11 @@ This runs the complete MF-VAR workflow:
 Rscript main.R midas
 ```
 
-Runs MIDAS regression models with the KOF Barometer:
-1. Estimates MIDAS with and without trend
-2. Generates forecasts for target variables
-3. Computes evaluation metrics
+Runs MIDAS regression models:
+1. **MIDAS-KOF**: Uses KOF Economic Barometer as monthly indicator
+2. Estimates models with and without trend
+3. Generates forecasts for target variables
+4. Computes evaluation metrics
 
 **Outputs:**
 - `output/forecasts/midas/csv/midas_forecasts_full.csv` - All forecast horizons
@@ -122,7 +123,14 @@ Runs MIDAS regression models with the KOF Barometer:
 Rscript main.R benchmarks
 ```
 
-Compares all models (MF-VAR, MIDAS-KOF, MIDAS-Latent, AR(2), RW-trend) with:
+Compares all model variants:
+- **MF-VAR**: Mixed-frequency Bayesian VAR with SNB indicators
+- **MIDAS-KOF (trend/simple)**: MIDAS with KOF Barometer
+- **MIDAS-Latent (trend/simple)**: MIDAS with MF-VAR latent states (extension)
+- **AR(2)**: Autoregressive benchmark
+- **RW-trend**: Random walk with drift
+
+Evaluation framework:
 - Expanding window cross-validation (default: 10 folds, configurable via `--max-folds`)
 - CV coverage: 1993 Q4 to 2025 Q2 (training starts from 6 quarters in 1992 Q2-1993 Q3)
 - Per-fold timing breakdowns for performance profiling
@@ -169,7 +177,8 @@ Generates multi-model comparison visualizations:
 
 ### Benchmarks
 - **AR(2)**: Autoregressive model (Yule-Walker/OLS/ARIMA fallbacks)
-- **MIDAS**: Mixed-data sampling with exponential Almon lag polynomials
+- **MIDAS-KOF**: Mixed-data sampling with KOF Economic Barometer and exponential Almon lag polynomials
+- **MIDAS-Latent** (Extension): MIDAS using MF-VAR latent states as monthly indicators
 - **RW-trend**: Random walk with linear trend
 
 ## Data Sources
@@ -180,9 +189,9 @@ Quarterly data sourced from Swiss National Bank (SNB):
 - Exchange rates (CHF/EUR)
 
 Monthly indicators:
-- KOF Economic Barometer (via `kofdata` package) for MIDAS models
-- SNB series: CPI, FX turnover, unemployment, policy rate
-- Swiss Market Index (SMI) monthly returns for MF-VAR models
+- **MF-VAR**: SNB series (CPI, FX turnover, unemployment, policy rate) + Swiss Market Index (SMI) monthly returns from combined timeseries file
+- **MIDAS-KOF**: KOF Economic Barometer (via `kofdata` package API)
+- **MIDAS-Latent** (Extension): MF-VAR latent states extracted from state-space model
 
 See `data/data_sources.md` for detailed provenance.
 
@@ -229,22 +238,25 @@ Edit main scripts to adjust:
 
 ### Data Preparation
 1. Load `data_quarterly.csv` (requires `date`, `rvgdp`, `cpi`, `wkfreuro` columns)
-2. Fetch KOF Barometer via API
-3. Trim both series to overlapping time range
+2. Load monthly indicators:
+   - **MF-VAR**: SNB series from combined timeseries file (CPI, FX turnover, unemployment, policy rate, SMI returns)
+   - **MIDAS-KOF**: Fetch KOF Economic Barometer via API
+   - **MIDAS-Latent**: Extract latent states from fitted MF-VAR model (requires MF-VAR to be estimated first)
+3. Trim series to overlapping time range
 4. Transform quarterly variables to stationarity
-5. Window barometer data (includes 2-month lookback)
+5. Window monthly data (includes 2-month lookback for ragged-edge aggregation)
 
 ### Model Estimation
 1. Set up Minnesota prior with IW covariance
-2. Run MCMC sampler (4000 reps, 2000 burn-in)
+2. Run MCMC sampler (10000 draws, 5000 burn-in - package defaults)
 3. Generate 12-quarter-ahead forecasts
 4. Aggregate monthly predictions to quarterly frequency
 5. Restore original scale (reverse transformations)
 
 ### Evaluation
-- **Holdout**: Reserve last 4 quarters, compare forecasts to actuals
-- **Cross-validation**: Expanding window 1-step ahead starting from 2015 Q4
-- **Metrics**: RMSE, MAE by horizon and overall
+- **Cross-validation**: Expanding window 1-step ahead (default: 10 folds, configurable)
+- **Coverage**: 1993 Q4 to 2025 Q2
+- **Metrics**: RMSE, MAE by horizon and variable
 
 ### Output
 - Forecast tables (CSV)
@@ -274,9 +286,10 @@ Pre-computed results are included in `output/forecasts/` and `output/benchmarks/
 
 ## Troubleshooting
 
-### KOF Barometer fetch fails
+### KOF Barometer fetch fails (MIDAS-KOF only)
 - Check internet connection
 - The `kofdata` package requires API access to KOF Swiss Economic Institute
+- MF-VAR and MIDAS-Latent models use local data and are not affected
 
 ### Insufficient data for evaluation
 - Reduce `n_lags` in workflow scripts
