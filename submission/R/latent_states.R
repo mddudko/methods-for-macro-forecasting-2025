@@ -1,12 +1,14 @@
 # Latent state extraction utilities for MF-VAR models
 
 state_label_map <- c(
+  # Monthly indicators (left side)
   plkopr = "CPI (index, 2020 = 100)",
-  devkum = "FX turnover (CHF/EUR)",
+  devkum = "Monthly Exchange Rate (CHF/EUR)",
   amarbma = "Registered unemployment",
   snboffzisa = "SNB policy rate",
   smi_monthly_return = "SMI monthly return",
   smi_monthly_avg = "SMI level (monthly average)",
+  # Quarterly targets (right side)
   gdp_growth = "GDP Growth (%, detrended)",
   inflation = "Inflation (%, detrended)",
   exch_rate = "Exchange Rate (log CHF/EUR, detrended)"

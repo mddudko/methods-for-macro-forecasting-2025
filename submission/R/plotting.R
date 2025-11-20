@@ -755,13 +755,6 @@ plot_cv_relative_errors <- function(
     dplyr::ungroup() |>
     dplyr::select(-fallback_cap)
 
-  capped_labels <- plot_df |>
-    dplyr::filter(is_capped) |>
-    dplyr::mutate(
-      label_text = sprintf("%.1f%%", relative_error),
-      label_y = relative_error_plot * 0.9
-    )
-
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = model, y = relative_error_plot, fill = model)) +
     ggplot2::geom_col(position = "dodge", width = 0.7) +
     ggplot2::geom_hline(yintercept = 100, linetype = "dashed", color = "gray30", linewidth = 0.8) +
@@ -773,7 +766,7 @@ plot_cv_relative_errors <- function(
       subtitle = sprintf("Relative to %s benchmark = 100%% | %s-fold expanding window CV", benchmark_model, n_folds),
       x = "Model",
       y = paste0("Relative ", metric_label, " (% of ", benchmark_model, ")"),
-      caption = "MF-VAR (manual) exchange-rate errors are clipped for scale; labels show true values"
+      caption = "MF-VAR (manual) exchange-rate errors are clipped for scale"
     ) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
@@ -783,16 +776,6 @@ plot_cv_relative_errors <- function(
       strip.text = ggplot2::element_text(face = "bold"),
       panel.grid.major.x = ggplot2::element_blank()
     )
-
-  if (nrow(capped_labels)) {
-    p <- p + ggplot2::geom_text(
-      data = capped_labels,
-      ggplot2::aes(x = model, y = label_y, label = label_text),
-      inherit.aes = FALSE,
-      size = 3.2,
-      fontface = "bold"
-    )
-  }
   
   file_stem <- paste0("cv_relative_errors_", metric_type)
   png_path <- file.path(out_dir, paste0(file_stem, ".png"))
